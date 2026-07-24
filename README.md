@@ -25,6 +25,10 @@ used while spinning.
 
 ## Usage
 
+The easiest way to get SpinWin is the [latest release](https://github.com/alokdhir/spinwin/releases/latest)
+— the download is signed with a Developer ID and notarized by Apple, so it
+launches without Gatekeeper warnings. Or build it yourself:
+
 ```sh
 ./scripts/build-app.sh          # builds SpinWin.app (release)
 open SpinWin.app              # grant Screen Recording + Accessibility
