@@ -4,6 +4,7 @@ import ScreenCaptureKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
+    private let menu = NSMenu()
     private let manager = RotationManager()
     private let picker = WindowPicker()
 
@@ -16,10 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let icon = MenuBarIcon.make()
             icon.accessibilityDescription = "SpinWin"
             button.image = icon
+            // Left click rotates immediately; right click opens the menu.
+            button.target = self
+            button.action = #selector(statusItemClicked)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-
-        let menu = NSMenu()
-        statusItem.menu = menu
         rebuildMenu()
 
         // Refresh when a session stops on its own (e.g. system "Stop Sharing").
@@ -30,10 +32,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Permissions.requestAll()
     }
 
+    // MARK: - Status item click
+
+    /// Left click jumps straight to picking a window; right click (or
+    /// Control-click) pops up the menu of active rotations and Quit.
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        let isRightClick = event?.type == .rightMouseUp
+            || event?.modifierFlags.contains(.control) == true
+        if isRightClick {
+            popUpMenu()
+        } else {
+            pickWindow()
+        }
+    }
+
+    /// Shows the menu under the status item, then detaches it so the next
+    /// left click still triggers the action instead of reopening the menu.
+    private func popUpMenu() {
+        rebuildMenu()
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
     // MARK: - Menu construction
 
     fileprivate func rebuildMenu() {
-        guard let menu = statusItem.menu else { return }
         menu.removeAllItems()
 
         let pick = NSMenuItem(
