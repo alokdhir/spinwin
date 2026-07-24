@@ -4,6 +4,6 @@
 *.xcodeproj
 DerivedData/
 build/
-RotateWin.app/
+SpinWin.app/
 
 .trekker/
