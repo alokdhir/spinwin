@@ -36,9 +36,13 @@ For quick iteration during development:
 swift build && swift run SpinWin
 ```
 
-Click the menubar icon → pick a rotation (or spin speed) → pick a window.
-Drag the rotated overlay anywhere to reposition it. "Stop rotating" restores
-the original window.
+**Left-click** the menubar icon to start: choose a rotation in the bottom
+options bar (a preset angle, a spin speed + direction, or free rotation), then
+click the window you want. Drag the overlay to reposition it; drag its handle
+to rotate freely. Press **Esc** on the overlay to stop and restore the window.
+
+**Right-click** (or Control-click) the icon for the menu: active rotations
+(with per-window angle/spin controls), Stop all, and Quit.
 
 ## Permissions
 
@@ -61,10 +65,14 @@ the original window.
 | File | Role |
 | --- | --- |
 | `main.swift` | App entry point (accessory/menubar policy) |
-| `AppDelegate.swift` | Menubar item, menu, window list |
+| `AppDelegate.swift` | Menubar item; left-click rotates, right-click opens menu |
 | `Permissions.swift` | Requests Screen Recording + Accessibility at launch |
+| `WindowPicker.swift` | Full-screen window picker + rotation options bar |
 | `RotationManager.swift` | Tracks one rotation session per window |
 | `RotationSession.swift` | Orchestrates hide → capture → overlay per window |
 | `CaptureEngine.swift` | ScreenCaptureKit stream → IOSurface frames |
 | `OverlayWindow.swift` | Transparent rotating/spinning overlay, drag |
 | `AccessibilityWindowMover.swift` | Move source window off-screen + restore |
+| `ActivationChoice.swift` | Initial rotation choice (angle/spin/free) |
+| `SpinDirection.swift` | Clockwise/counterclockwise spin option |
+| `MenuBarIcon.swift` | Draws the menubar icon |
