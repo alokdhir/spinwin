@@ -42,7 +42,9 @@ ZIP="$ROOT/SpinWin-$VER.zip"
 # 2. Zip and submit for notarization.
 echo "==> Packaging for submission…"
 rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
+# --norsrc/--noextattr keep AppleDouble "._" companion files out of the archive,
+# which otherwise litter the download when someone unzips it.
+ditto -c -k --norsrc --noextattr --keepParent "$APP" "$ZIP"
 
 echo "==> Submitting to Apple notary service (this can take a few minutes)…"
 xcrun notarytool submit "$ZIP" "${auth_args[@]}" --wait
@@ -54,7 +56,7 @@ xcrun stapler validate "$APP"
 
 echo "==> Re-packaging stapled app…"
 rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
+ditto -c -k --norsrc --noextattr --keepParent "$APP" "$ZIP"
 
 echo
 echo "Done: $ZIP (notarized + stapled, version $VER)"
