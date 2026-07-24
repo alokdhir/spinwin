@@ -38,10 +38,16 @@ if [ "$SIGN_IDENTITY" = "-" ]; then
 	echo "         macOS will re-prompt for Screen Recording/Accessibility on every rebuild." >&2
 	codesign --force --sign - "$APP"
 else
-	# --timestamp=none: skip Apple's secure timestamp server (offline-friendly);
-	# without it, hardened-runtime signing fails and silently leaves an ad-hoc
-	# signature, which makes TCC forget permissions on every rebuild.
-	codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" "$APP"
+	# By default skip Apple's secure timestamp server (offline-friendly); without
+	# it, hardened-runtime signing still succeeds locally and TCC permissions
+	# persist across rebuilds. Notarization, however, REQUIRES a secure
+	# timestamp, so `scripts/notarize.sh` sets TIMESTAMP=1 to request one.
+	if [ "${TIMESTAMP:-0}" = "1" ]; then
+		TS_FLAG="--timestamp"
+	else
+		TS_FLAG="--timestamp=none"
+	fi
+	codesign --force --options runtime "$TS_FLAG" --sign "$SIGN_IDENTITY" "$APP"
 fi
 
 # Fail loudly if we didn't end up with the intended stable signature.
