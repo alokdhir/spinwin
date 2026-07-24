@@ -90,7 +90,8 @@ final class RotationSession {
         overlay.orderFrontRegardless()
         isRunning = true
 
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
                 try await capture.start(window: window) { [weak self] surface in
                     self?.overlay?.update(surface: surface)

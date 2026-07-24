@@ -52,7 +52,13 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
         guard let stream else { return }
         self.stream = nil
         onSurface = nil
-        Task { try? await stream.stopCapture() }
+        // Remove ourselves as the stream's output so SCStream drops its strong
+        // reference back to this engine; otherwise the two can keep each other
+        // alive (along with any in-flight frame's IOSurface) past stop.
+        Task {
+            try? stream.removeStreamOutput(self, type: .screen)
+            try? await stream.stopCapture()
+        }
     }
 
     // MARK: - SCStreamDelegate
