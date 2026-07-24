@@ -76,8 +76,7 @@ capture; a normal overlay window would capture itself into an infinite mirror.
 ## Task tracking (Trekker)
 
 This project tracks work in Trekker (`.trekker/trekker.db`), not GitHub Issues
-or a TODO file. **Always use the `trekker` CLI — never query the sqlite db
-directly.**
+or a TODO file.
 
 ```sh
 trekker --toon task list --status in_progress   # resume work
