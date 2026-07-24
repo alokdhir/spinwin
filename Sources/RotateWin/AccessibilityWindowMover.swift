@@ -59,16 +59,39 @@ final class AccessibilityWindowMover {
         }
         movedElement = element
 
-        // Park it far off the top-left of all displays. Most apps keep
-        // rendering an off-screen window, so capture continues.
-        let setErr = setPosition(CGPoint(x: -30000, y: -30000), on: element)
+        // Push it past the bottom-right corner of every display, leaving
+        // ~1px of overlap. macOS clamps window positions to keep some part
+        // reachable, and empirically that clamp is much tighter going off
+        // the bottom/right than going off the top (likely because there's
+        // never a display above y=0, so pushing up/left gets snapped back
+        // near the top-left, leaving a full-height sliver visible instead).
+        let target = Self.offScreenTarget(for: frame)
+        let setErr = setPosition(target, on: element)
         if setErr != .success {
             lastFailure = "Setting off-screen position failed (AXError \(setErr.rawValue))."
             NSLog("RotateWin: \(lastFailure!)")
             movedElement = nil
             return false
         }
+        let actual = position(of: element) ?? target
+        NSLog("RotateWin: off-screen target=\(target) actual=\(actual) frameSize=\(frame.size)")
         return true
+    }
+
+    /// A position just past the bottom-right of the total desktop, chosen so
+    /// only ~1px of the window would overlap any display if macOS lets it,
+    /// while still being deep enough to satisfy any minimum-overlap clamp.
+    private static func offScreenTarget(for frame: CGRect) -> CGPoint {
+        var displayCount: UInt32 = 0
+        CGGetActiveDisplayList(0, nil, &displayCount)
+        var displayIDs = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
+        CGGetActiveDisplayList(displayCount, &displayIDs, &displayCount)
+
+        let bounds = displayIDs.map { CGDisplayBounds($0) }
+        guard let union = bounds.reduce(nil as CGRect?, { $0?.union($1) ?? $1 }) else {
+            return CGPoint(x: 30000, y: 30000)
+        }
+        return CGPoint(x: union.maxX - 1, y: union.maxY - 1)
     }
 
     /// Restores the previously hidden window to its original position.
