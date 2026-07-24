@@ -30,7 +30,28 @@ cp "$BIN" "$APP/Contents/MacOS/RotateWin"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
 echo "Signing with: $SIGN_IDENTITY"
-codesign --force --options runtime --sign "$SIGN_IDENTITY" "$APP"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+	echo "WARNING: no Developer ID/Apple Development identity found; signing ad-hoc." >&2
+	echo "         macOS will re-prompt for Screen Recording/Accessibility on every rebuild." >&2
+	codesign --force --sign - "$APP"
+else
+	# --timestamp=none: skip Apple's secure timestamp server (offline-friendly);
+	# without it, hardened-runtime signing fails and silently leaves an ad-hoc
+	# signature, which makes TCC forget permissions on every rebuild.
+	codesign --force --options runtime --timestamp=none --sign "$SIGN_IDENTITY" "$APP"
+fi
+
+# Fail loudly if we didn't end up with the intended stable signature.
+if [ "$SIGN_IDENTITY" != "-" ]; then
+	SIG_INFO="$(codesign -dv --verbose=2 "$APP" 2>&1 || true)"
+	case "$SIG_INFO" in
+		*TeamIdentifier=*) ;;
+		*)
+			echo "ERROR: signing did not apply a Team identity; permissions will not persist." >&2
+			exit 1
+			;;
+	esac
+fi
 
 echo "Done: $APP"
 echo "Run with: open \"$APP\"   (grant Screen Recording + Accessibility when prompted)"
