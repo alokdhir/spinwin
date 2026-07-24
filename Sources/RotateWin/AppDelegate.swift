@@ -13,10 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(
-                systemSymbolName: "rotate.right",
-                accessibilityDescription: "Rotate Window"
-            )
+            let icon = MenuBarIcon.make()
+            icon.accessibilityDescription = "Rotate Window"
+            button.image = icon
         }
 
         let menu = NSMenu()
