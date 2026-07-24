@@ -24,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Refresh when a session stops on its own (e.g. system "Stop Sharing").
         manager.onStateChange = { [weak self] in self?.rebuildMenu() }
+
+        // Ask for Screen Recording + Accessibility now, so the user isn't
+        // interrupted by prompts the first time they rotate a window.
+        Permissions.requestAll()
     }
 
     // MARK: - Menu construction

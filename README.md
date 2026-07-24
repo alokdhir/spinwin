@@ -62,7 +62,9 @@ the original window.
 | --- | --- |
 | `main.swift` | App entry point (accessory/menubar policy) |
 | `AppDelegate.swift` | Menubar item, menu, window list |
-| `RotationController.swift` | Orchestrates hide → capture → overlay |
-| `CaptureEngine.swift` | ScreenCaptureKit stream → CGImage frames |
+| `Permissions.swift` | Requests Screen Recording + Accessibility at launch |
+| `RotationManager.swift` | Tracks one rotation session per window |
+| `RotationSession.swift` | Orchestrates hide → capture → overlay per window |
+| `CaptureEngine.swift` | ScreenCaptureKit stream → IOSurface frames |
 | `OverlayWindow.swift` | Transparent rotating/spinning overlay, drag |
 | `AccessibilityWindowMover.swift` | Move source window off-screen + restore |
