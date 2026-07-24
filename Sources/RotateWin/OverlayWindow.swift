@@ -14,6 +14,9 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
     private var spinning = false
     private var rpm: Double = 15
 
+    /// Called when Escape is pressed while this overlay is the key window.
+    var onEscape: (() -> Void)?
+
     init() {
         super.init(
             contentRect: .zero,
@@ -24,7 +27,11 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        level = .floating
+        // Normal level (not .floating) so it follows regular front/back
+        // ordering: other apps' windows can come to the front over it. A
+        // floating level would always stay above every app, blocking clicks
+        // through to whatever is underneath.
+        level = .normal
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         ignoresMouseEvents = false
         isMovableByWindowBackground = true
@@ -115,6 +122,19 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         center = CGPoint(x: frame.midX, y: frame.midY)
     }
 
-    override var canBecomeKey: Bool { false }
+    // MARK: - Key handling
+
+    /// Allow the overlay to take key focus (e.g. after a click) so it can
+    /// receive Escape to stop rotating. It carries no controls, so this only
+    /// costs a focus ring-free activation.
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { // Escape
+            onEscape?()
+            return
+        }
+        super.keyDown(with: event)
+    }
 }

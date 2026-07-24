@@ -19,10 +19,11 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
         let filter = SCContentFilter(desktopIndependentWindow: window)
 
         let config = SCStreamConfiguration()
-        // Capture at 2x so the rotated overlay stays crisp on Retina displays.
-        let scale = 2
-        config.width = Int(window.frame.width) * scale
-        config.height = Int(window.frame.height) * scale
+        // Match the window's actual display scale: Retina stays crisp, but a
+        // plain 1x display isn't upscaled 4x for no visual gain.
+        let scale = backingScale(for: window.frame)
+        config.width = Int((window.frame.width * scale).rounded())
+        config.height = Int((window.frame.height * scale).rounded())
         // 30 fps is plenty and far cheaper than 60.
         config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         config.queueDepth = 3
@@ -33,6 +34,18 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: sampleQueue)
         try await stream.startCapture()
         self.stream = stream
+    }
+
+    /// Backing scale factor of the display containing `cgFrame` (CoreGraphics
+    /// top-left coordinates), so capture resolution matches the window's real
+    /// pixel density instead of assuming Retina. Falls back to 2 if no screen
+    /// contains it (e.g. a window straddling displays or off-screen).
+    private func backingScale(for cgFrame: CGRect) -> CGFloat {
+        let primaryHeight = (NSScreen.screens.first { $0.frame.origin == .zero }
+            ?? NSScreen.main)?.frame.height ?? cgFrame.maxY
+        let cocoaCenter = CGPoint(x: cgFrame.midX, y: primaryHeight - cgFrame.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(cocoaCenter) }
+        return screen?.backingScaleFactor ?? 2
     }
 
     func stop() {

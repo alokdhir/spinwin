@@ -57,6 +57,11 @@ final class RotationSession {
 
         let overlay = OverlayWindow()
         overlay.place(unrotatedSize: cgFrame.size, center: center)
+        overlay.onEscape = { [weak self] in
+            guard let self, self.isRunning else { return }
+            self.stop()
+            self.onExternalStop?(self)
+        }
         self.overlay = overlay
         applyRotation()
         overlay.orderFrontRegardless()
