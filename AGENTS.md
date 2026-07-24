@@ -109,6 +109,7 @@ window). `AccessibilityWindowMover.ensureTrusted()` prompts for the latter.
 
 ## Known limitations (by design, not bugs to "fix")
 
-- Input (clicks/keys) is **not** forwarded to the real window yet.
+- Input (clicks/keys) is **not** forwarded to the real window; the overlay is
+  display-only by design.
 - The hidden source window still appears (unrotated) in Mission Control/Exposé;
   no public API excludes another app's window from it.
