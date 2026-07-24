@@ -3,6 +3,8 @@
 A macOS menubar utility that visually rotates a selected window by any angle
 (90° increments, arbitrary angles, or a continuous spin).
 
+![SpinWin flipping a terminal window upside down](docs/spin.gif)
+
 ## How it works (and why)
 
 macOS has **no public API to rotate another app's window**. Real rotation
