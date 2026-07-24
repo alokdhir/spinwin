@@ -13,6 +13,10 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
     private var degrees: Double = 180
     private var spinning = false
     private var rpm: Double = 15
+    /// Unwrapped (not mod-360) radians actually applied to the layer, so
+    /// repeated rotations keep spinning the same direction instead of
+    /// snapping back through 0, and transitions always take the shortest turn.
+    private var currentRotationRadians: CGFloat = 0
 
     /// Called when Escape is pressed while this overlay is the key window.
     var onEscape: (() -> Void)?
@@ -62,42 +66,85 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         CATransaction.commit()
     }
 
-    /// Renders the content at a fixed angle (any degree value).
+    /// Renders the content at a fixed angle (any degree value), animating
+    /// from the current angle with a slight ease-out overshoot/bounce settle
+    /// rather than snapping instantly.
     func setFixed(degrees: Double) {
         self.degrees = degrees
+
+        // Always use the diagonal-square footprint (same as spin) so the
+        // overshoot mid-bounce never clips, regardless of start/end angle.
+        applyGeometry(boxSize: diagonalBoxSize)
+
+        // If we were mid-spin, continue smoothly from wherever it visually
+        // was rather than snapping back to the stale (identity) model value.
+        if spinning, let presented = imageLayer.presentation()?.value(forKeyPath: "transform.rotation.z") as? CGFloat {
+            currentRotationRadians = presented
+        }
         spinning = false
         imageLayer.removeAnimation(forKey: "spin")
 
-        let radians = degrees * .pi / 180
-        let boxW = abs(unrotatedSize.width * cos(radians)) + abs(unrotatedSize.height * sin(radians))
-        let boxH = abs(unrotatedSize.width * sin(radians)) + abs(unrotatedSize.height * cos(radians))
+        let targetRadians = CGFloat(degrees * .pi / 180)
+        let delta = Self.shortestDelta(from: currentRotationRadians, to: targetRadians)
+        let newRotationRadians = currentRotationRadians + delta
 
-        applyGeometry(boxSize: CGSize(width: boxW, height: boxH))
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        imageLayer.transform = CATransform3DMakeRotation(radians, 0, 0, 1)
-        CATransaction.commit()
+        let animation = CASpringAnimation(keyPath: "transform.rotation.z")
+        animation.fromValue = currentRotationRadians
+        animation.toValue = newRotationRadians
+        animation.mass = 1
+        animation.stiffness = 180
+        animation.damping = 14
+        animation.initialVelocity = 0
+        animation.duration = animation.settlingDuration
+
+        imageLayer.removeAnimation(forKey: "rotate")
+        imageLayer.transform = CATransform3DMakeRotation(newRotationRadians, 0, 0, 1)
+        imageLayer.add(animation, forKey: "rotate")
+
+        currentRotationRadians = newRotationRadians
     }
 
-    /// Continuously spins the content at the given revolutions per minute.
+    /// Continuously spins the content at the given revolutions per minute,
+    /// continuing smoothly from whatever angle is currently showing.
     func startSpin(rpm: Double) {
         self.rpm = rpm
+        applyGeometry(boxSize: diagonalBoxSize)
+
+        if !spinning, let presented = imageLayer.presentation()?.value(forKeyPath: "transform.rotation.z") as? CGFloat {
+            currentRotationRadians = presented
+        }
         spinning = true
+        imageLayer.removeAnimation(forKey: "rotate")
 
-        // A square of side = the rectangle's diagonal contains it at every
-        // angle, so nothing clips mid-spin.
-        let diag = sqrt(unrotatedSize.width * unrotatedSize.width +
-                        unrotatedSize.height * unrotatedSize.height)
-        applyGeometry(boxSize: CGSize(width: diag, height: diag))
+        let start = currentRotationRadians
+        imageLayer.transform = CATransform3DMakeRotation(start, 0, 0, 1)
 
-        imageLayer.transform = CATransform3DIdentity
         let animation = CABasicAnimation(keyPath: "transform.rotation.z")
-        animation.fromValue = 0
-        animation.toValue = 2 * Double.pi
+        animation.fromValue = start
+        animation.toValue = start + 2 * Double.pi
         animation.duration = max(0.1, 60.0 / rpm)
         animation.repeatCount = .infinity
         animation.isRemovedOnCompletion = false
         imageLayer.add(animation, forKey: "spin")
+    }
+
+    /// Bounding box (in points) large enough to contain the unrotated content
+    /// at any angle, including mid-bounce overshoot.
+    private var diagonalBoxSize: CGSize {
+        let diag = sqrt(unrotatedSize.width * unrotatedSize.width +
+                        unrotatedSize.height * unrotatedSize.height)
+        return CGSize(width: diag, height: diag)
+    }
+
+    /// Shortest signed angular step (radians, in (-π, π]) from `from`
+    /// (mod 2π) to `to`, so callers can add it to an *unwrapped* running
+    /// angle and always take the short way round.
+    private static func shortestDelta(from: CGFloat, to: CGFloat) -> CGFloat {
+        let twoPi = CGFloat.pi * 2
+        var delta = (to - from).truncatingRemainder(dividingBy: twoPi)
+        if delta > .pi { delta -= twoPi }
+        if delta < -.pi { delta += twoPi }
+        return delta
     }
 
     private func applyGeometry(boxSize: CGSize) {
