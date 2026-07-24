@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds RotateWin.app: a proper .app bundle so macOS grants a stable identity
+# Builds SpinWin.app: a proper .app bundle so macOS grants a stable identity
 # for the Screen Recording and Accessibility permission prompts.
 #
 # Signs with a stable code-signing identity so rebuilds keep the SAME TCC
@@ -9,7 +9,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${1:-release}"
-APP="$ROOT/RotateWin.app"
+APP="$ROOT/SpinWin.app"
 
 # Prefer a real Developer ID / Apple Development identity; fall back to ad-hoc.
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
@@ -21,12 +21,12 @@ fi
 
 echo "Building ($CONFIG)…"
 swift build -c "$CONFIG" --package-path "$ROOT"
-BIN="$(swift build -c "$CONFIG" --package-path "$ROOT" --show-bin-path)/RotateWin"
+BIN="$(swift build -c "$CONFIG" --package-path "$ROOT" --show-bin-path)/SpinWin"
 
 echo "Assembling bundle…"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/RotateWin"
+cp "$BIN" "$APP/Contents/MacOS/SpinWin"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
 	cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"

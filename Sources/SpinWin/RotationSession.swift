@@ -97,7 +97,7 @@ final class RotationSession {
                     self?.overlay?.update(surface: surface)
                 }
             } catch {
-                NSLog("RotateWin: capture failed: \(error.localizedDescription)")
+                NSLog("SpinWin: capture failed: \(error.localizedDescription)")
                 stop()
                 onExternalStop?(self)
             }

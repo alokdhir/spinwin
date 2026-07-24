@@ -29,5 +29,5 @@ enum SpinDirection: String {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) }
     }
 
-    private static let defaultsKey = "RotateWin.spinDirection"
+    private static let defaultsKey = "SpinWin.spinDirection"
 }

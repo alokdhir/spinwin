@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let icon = MenuBarIcon.make()
-            icon.accessibilityDescription = "Rotate Window"
+            icon.accessibilityDescription = "SpinWin"
             button.image = icon
         }
 

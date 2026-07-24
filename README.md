@@ -1,4 +1,4 @@
-# RotateWin
+# SpinWin
 
 A macOS menubar utility that visually rotates a selected window by any angle
 (90° increments, arbitrary angles, or a continuous spin).
@@ -9,7 +9,7 @@ macOS has **no public API to rotate another app's window**. Real rotation
 would require private SkyLight calls (`CGSSetWindowTransform`) with System
 Integrity Protection disabled — not worth it.
 
-Instead, RotateWin fakes it:
+Instead, SpinWin fakes it:
 
 1. **Hide** the selected window off-screen via the Accessibility API. It keeps
    rendering there, so it can still be captured.
@@ -26,14 +26,14 @@ used while spinning.
 ## Usage
 
 ```sh
-./scripts/build-app.sh          # builds RotateWin.app (release)
-open RotateWin.app              # grant Screen Recording + Accessibility
+./scripts/build-app.sh          # builds SpinWin.app (release)
+open SpinWin.app              # grant Screen Recording + Accessibility
 ```
 
 For quick iteration during development:
 
 ```sh
-swift build && swift run RotateWin
+swift build && swift run SpinWin
 ```
 
 Click the menubar icon → pick a rotation (or spin speed) → pick a window.

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-RotateWin is a macOS 14+ menubar utility (Swift Package Manager, no Xcode
+SpinWin is a macOS 14+ menubar utility (Swift Package Manager, no Xcode
 project) that *fakes* rotating another app's window, since macOS has no public
 API to actually rotate one. Understand the illusion below before changing
 anything — most of the code exists to sustain it.
@@ -8,9 +8,9 @@ anything — most of the code exists to sustain it.
 ## Commands
 
 ```sh
-swift build && swift run RotateWin   # fast dev iteration (runs as loose binary)
-./scripts/build-app.sh [release]     # build the signed RotateWin.app bundle
-open RotateWin.app                   # run bundled; grant permissions when prompted
+swift build && swift run SpinWin   # fast dev iteration (runs as loose binary)
+./scripts/build-app.sh [release]     # build the signed SpinWin.app bundle
+open SpinWin.app                   # run bundled; grant permissions when prompted
 ```
 
 There are no tests, linters, or CI. `swift build` is the only correctness gate.
@@ -103,7 +103,7 @@ window). `AccessibilityWindowMover.ensureTrusted()` prompts for the latter.
 - All UI/session types are `@MainActor`; `CaptureEngine` runs its `SCStream`
   callbacks on a private queue and hops to main before touching UI.
 - Failures surface as human-readable strings (`RotationSession.start` returns
-  `String?`; `AccessibilityWindowMover.lastFailure`) and via `NSLog("RotateWin: …")`.
+  `String?`; `AccessibilityWindowMover.lastFailure`) and via `NSLog("SpinWin: …")`.
 - Keep the `README.md` layout table accurate if you add/rename files (it
   currently lists a stale `RotationController.swift`; the real orchestrators are
   `RotationManager.swift` + `RotationSession.swift`).

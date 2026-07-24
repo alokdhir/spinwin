@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>RotateWin</string>
+	<string>SpinWin</string>
 	<key>CFBundleDisplayName</key>
-	<string>Rotate Window</string>
+	<string>SpinWin</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.rotatewin.app</string>
+	<string>com.spinwin.app</string>
 	<key>CFBundleExecutable</key>
-	<string>RotateWin</string>
+	<string>SpinWin</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>

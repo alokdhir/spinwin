@@ -78,5 +78,5 @@ enum ActivationChoice: Equatable {
         set { UserDefaults.standard.set(newValue.storageKey, forKey: defaultsKey) }
     }
 
-    private static let defaultsKey = "RotateWin.lastActivationChoice"
+    private static let defaultsKey = "SpinWin.lastActivationChoice"
 }

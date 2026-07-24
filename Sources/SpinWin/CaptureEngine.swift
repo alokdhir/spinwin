@@ -5,7 +5,7 @@ import ScreenCaptureKit
 /// each frame's IOSurface (zero-copy) to the main actor for display.
 final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
     private var stream: SCStream?
-    private let sampleQueue = DispatchQueue(label: "com.rotatewin.capture")
+    private let sampleQueue = DispatchQueue(label: "com.spinwin.capture")
     private var onSurface: ((IOSurface) -> Void)?
     /// Called on the main thread if capture stops on its own (e.g. the user
     /// clicks the system "Stop Sharing" menu bar control).

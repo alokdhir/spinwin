@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "RotateWin",
+    name: "SpinWin",
     platforms: [
         .macOS(.v14)
     ],
     targets: [
         .executableTarget(
-            name: "RotateWin",
-            path: "Sources/RotateWin"
+            name: "SpinWin",
+            path: "Sources/SpinWin"
         )
     ]
 )

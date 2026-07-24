@@ -67,9 +67,9 @@ final class RotationManager {
     }
 
     private func warn(_ message: String) {
-        NSLog("RotateWin: \(message)")
+        NSLog("SpinWin: \(message)")
         let alert = NSAlert()
-        alert.messageText = "Rotate Window"
+        alert.messageText = "SpinWin"
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.runModal()

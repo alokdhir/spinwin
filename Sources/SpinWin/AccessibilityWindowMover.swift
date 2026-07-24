@@ -35,13 +35,13 @@ final class AccessibilityWindowMover {
         let listErr = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsValue)
         guard listErr == .success, let windows = windowsValue as? [AXUIElement] else {
             lastFailure = "AXWindows list failed (AXError \(listErr.rawValue)); is Accessibility permission granted?"
-            NSLog("RotateWin: \(lastFailure!)")
+            NSLog("SpinWin: \(lastFailure!)")
             return false
         }
 
         guard let element = matchWindow(in: windows, windowID: windowID, frame: frame) else {
             lastFailure = "No AX window matched id=\(windowID) among \(windows.count) windows (pid \(pid))."
-            NSLog("RotateWin: \(lastFailure!)")
+            NSLog("SpinWin: \(lastFailure!)")
             return false
         }
 
@@ -50,7 +50,7 @@ final class AccessibilityWindowMover {
         AXUIElementIsAttributeSettable(element, kAXPositionAttribute as CFString, &settable)
         guard settable.boolValue else {
             lastFailure = "This window's position is not settable (not movable)."
-            NSLog("RotateWin: \(lastFailure!)")
+            NSLog("SpinWin: \(lastFailure!)")
             return false
         }
 
@@ -69,12 +69,12 @@ final class AccessibilityWindowMover {
         let setErr = setPosition(target, on: element)
         if setErr != .success {
             lastFailure = "Setting off-screen position failed (AXError \(setErr.rawValue))."
-            NSLog("RotateWin: \(lastFailure!)")
+            NSLog("SpinWin: \(lastFailure!)")
             movedElement = nil
             return false
         }
         let actual = position(of: element) ?? target
-        NSLog("RotateWin: off-screen target=\(target) actual=\(actual) frameSize=\(frame.size)")
+        NSLog("SpinWin: off-screen target=\(target) actual=\(actual) frameSize=\(frame.size)")
         return true
     }
 
