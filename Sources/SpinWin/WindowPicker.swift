@@ -73,9 +73,14 @@ final class WindowPicker {
         }
         band.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(band)
+        // Sit a fixed gap above the Dock rather than a fixed distance from the
+        // screen edge, so a large Dock pushes the band up instead of hiding
+        // behind it. Anchored to the Dock's own screen, which with multiple
+        // displays is not necessarily the middle of the union.
+        let anchor = Self.bandAnchor(in: union)
         NSLayoutConstraint.activate([
-            band.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            band.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -70)
+            band.centerXAnchor.constraint(equalTo: container.leadingAnchor, constant: anchor.centerX),
+            band.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -anchor.bottomInset)
         ])
 
         window.contentView = container
@@ -89,6 +94,30 @@ final class WindowPicker {
         // in from there — otherwise the animation starts from a zero frame.
         container.layoutSubtreeIfNeeded()
         band.playEntranceAnimation()
+    }
+
+    /// Where the options band should sit, in `container` coordinates (origin at
+    /// the bottom-left of the union of all screens).
+    ///
+    /// The band is placed relative to the Dock, not the screen edge: the gap is
+    /// measured from the top of the Dock, so enlarging the Dock raises the band
+    /// rather than letting the Dock cover it. With an auto-hidden Dock the
+    /// thickness is zero and the gap falls back to the screen edge.
+    private static func bandAnchor(in union: NSRect) -> (centerX: CGFloat, bottomInset: CGFloat) {
+        let gap: CGFloat = 30
+
+        // The screen that actually owns the Dock: a bottom Dock is the only
+        // thing that insets visibleFrame from the bottom of frame.
+        let dockScreen = NSScreen.screens.max { lhs, rhs in
+            (lhs.visibleFrame.minY - lhs.frame.minY) < (rhs.visibleFrame.minY - rhs.frame.minY)
+        }
+        let screen = dockScreen ?? NSScreen.main ?? NSScreen.screens[0]
+        let dockThickness = max(0, screen.visibleFrame.minY - screen.frame.minY)
+
+        return (
+            centerX: screen.frame.midX - union.minX,
+            bottomInset: (screen.frame.minY - union.minY) + dockThickness + gap
+        )
     }
 
     private func finish(_ window: SCWindow?) {
@@ -181,11 +210,23 @@ private final class OptionsBandView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) not used") }
 
-    /// Springs the band up into place when the picker opens. Against the dimmed
-    /// backdrop a static bar is easy to miss, so it rises from just below its
-    /// resting spot and overshoots slightly to pull the eye down to it.
+    /// Unfurls the band into place when the picker opens, as if it were poured
+    /// up out of the Dock: it starts as a narrow pill directly below, then
+    /// spreads horizontally and overshoots slightly before settling. Against the
+    /// dimmed backdrop a static bar is easy to miss; the overshoot is the cue.
     func playEntranceAnimation() {
         guard let layer else { return }
+
+        // Respect the system setting: for anyone who has asked for less motion,
+        // a plain fade conveys the same thing without the movement.
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            fade.duration = 0.22
+            layer.add(fade, forKey: "entranceFade")
+            return
+        }
 
         // Under-damped on purpose: the overshoot *is* the attention cue.
         func spring(_ keyPath: String, from: CGFloat, to: CGFloat) -> CASpringAnimation {
@@ -197,18 +238,26 @@ private final class OptionsBandView: NSView {
             animation.damping = 13
             animation.initialVelocity = 0
             animation.duration = animation.settlingDuration
+            animation.fillMode = .backwards
             return animation
         }
 
+        // Start at the width of a narrow spout. The band's 21pt corner radius
+        // means that at this width it already reads as a rounded pill, so the
+        // spread looks like one continuous pour.
+        let pillWidth: CGFloat = 46
+        let startScaleX = min(1, pillWidth / max(layer.bounds.width, 1))
+        layer.add(spring("transform.scale.x", from: startScaleX, to: 1), forKey: "entranceSpread")
+        layer.add(spring("transform.scale.y", from: 0.62, to: 1), forKey: "entranceScaleY")
+
         // Cocoa's y grows upward, so a smaller y starts it below where it lands.
         let restingY = layer.position.y
-        layer.add(spring("position.y", from: restingY - 26, to: restingY), forKey: "entranceRise")
-        layer.add(spring("transform.scale", from: 0.86, to: 1), forKey: "entranceScale")
+        layer.add(spring("position.y", from: restingY - 10, to: restingY), forKey: "entranceRise")
 
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 0
         fade.toValue = 1
-        fade.duration = 0.16
+        fade.duration = 0.14
         layer.add(fade, forKey: "entranceFade")
     }
 
