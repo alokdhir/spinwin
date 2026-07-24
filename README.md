@@ -51,9 +51,8 @@ to rotate freely. Press **Esc** on the overlay to stop and restore the window.
 
 ## Current limitations
 
-- **Input is not remapped yet.** The overlay is a live picture you can drag,
-  but clicks/keys are not forwarded through the rotation to the real window.
-  (Planned: `CGEvent.postToPid` with inverse-rotation coordinate mapping.)
+- **The overlay is a live picture, not interactive.** You can drag and rotate
+  it, but clicks and keystrokes are not sent to the real window underneath.
 - **Mission Control / Exposé leak.** The hidden window is parked off-screen but
   still a real window, so Exposé shows it *unrotated*. There is no public API
   to exclude another app's window from Mission Control, and minimizing it would
