@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pick = NSMenuItem(
             title: "Rotate a window…",
             action: #selector(pickWindow),
-            keyEquivalent: "p"
+            keyEquivalent: ""
         )
         pick.target = self
         menu.addItem(pick)
@@ -50,13 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             menu.addItem(.separator())
-            let stopAll = NSMenuItem(title: "Stop all", action: #selector(stopAll), keyEquivalent: "s")
+            let stopAll = NSMenuItem(title: "Stop all", action: #selector(stopAll), keyEquivalent: "")
             stopAll.target = self
             menu.addItem(stopAll)
         }
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
     }
