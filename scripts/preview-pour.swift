@@ -73,6 +73,10 @@ let bandSize = CGSize(width: bandWidth, height: bandHeight)
 
 // MARK: - Preview view
 
+// NOTE: this preview draws the band as a raw CALayer, which anchors at its
+// center. A real NSView's backing layer anchors at its bottom-left instead, so
+// the shipping code must re-anchor before scaling or the bar expands rightward
+// from its left edge rather than opening from the middle.
 final class PourPreviewView: NSView {
     private let dock = CALayer()
     private let dockDivider = CALayer()

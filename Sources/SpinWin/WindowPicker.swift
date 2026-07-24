@@ -217,6 +217,19 @@ private final class OptionsBandView: NSView {
     func playEntranceAnimation() {
         guard let layer else { return }
 
+        // A view's backing layer anchors at its bottom-left corner, so scaling
+        // it would expand rightward from the left edge instead of opening out
+        // from the middle. Re-anchor to the center and move the layer's position
+        // to match, which keeps it visually in the same place. (Assigning frame
+        // recomputes position from the anchor, so later layout passes are fine.)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if layer.anchorPoint != CGPoint(x: 0.5, y: 0.5) {
+            layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            layer.position = CGPoint(x: frame.midX, y: frame.midY)
+        }
+        CATransaction.commit()
+
         // Respect the system setting: for anyone who has asked for less motion,
         // a plain fade conveys the same thing without the movement.
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
