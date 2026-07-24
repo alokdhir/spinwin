@@ -2,9 +2,11 @@ import AppKit
 
 /// A borderless, transparent window that draws the captured frames at an
 /// arbitrary rotation (or continuously spinning) on top of where the real
-/// (now hidden) window used to be. Drag it anywhere to reposition.
+/// (now hidden) window used to be. Drag the background to reposition; drag
+/// the small handle to rotate freely to any angle.
 final class OverlayWindow: NSWindow, NSWindowDelegate {
     private let imageLayer = CALayer()
+    private let handle = RotationHandleView(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
     private var unrotatedSize: CGSize = .zero
     /// Current on-screen center (Cocoa coords); updated as the user drags.
     private var center: CGPoint = .zero
@@ -20,6 +22,10 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
 
     /// Called when Escape is pressed while this overlay is the key window.
     var onEscape: (() -> Void)?
+    /// Called continuously while the rotation handle is dragged (degrees).
+    var onFreeRotate: ((Double) -> Void)?
+    /// Called once the handle drag ends, so callers can trigger a settle.
+    var onFreeRotateEnd: ((Double) -> Void)?
 
     init() {
         super.init(
@@ -41,17 +47,27 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         isMovableByWindowBackground = true
         delegate = self
 
+        let container = NSView()
+
         let hosting = NSView()
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
-
         imageLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         imageLayer.contentsGravity = .resize
         // Render on a background thread so a slow frame never stalls the UI.
         imageLayer.drawsAsynchronously = true
         hosting.layer?.addSublayer(imageLayer)
-        contentView = hosting
+
+        container.addSubview(hosting)
+        container.addSubview(handle) // added after -> hit-tested first
+        contentView = container
+
+        hosting.frame = container.bounds
+        hosting.autoresizingMask = [.width, .height]
+
+        handle.owner = self
     }
+
 
     /// Sets the source size and initial position. Call once when starting.
     func place(unrotatedSize: CGSize, center: CGPoint) {
@@ -102,6 +118,26 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         imageLayer.add(animation, forKey: "rotate")
 
         currentRotationRadians = newRotationRadians
+        handle.isHidden = false
+        updateHandlePosition()
+    }
+
+    /// Sets the angle directly with no animation, for continuous handle
+    /// dragging (each intermediate value would otherwise fight the spring).
+    func setFixedImmediate(degrees: Double) {
+        self.degrees = degrees
+        spinning = false
+        imageLayer.removeAnimation(forKey: "spin")
+        imageLayer.removeAnimation(forKey: "rotate")
+        applyGeometry(boxSize: diagonalBoxSize)
+
+        let radians = CGFloat(degrees * .pi / 180)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        imageLayer.transform = CATransform3DMakeRotation(radians, 0, 0, 1)
+        CATransaction.commit()
+        currentRotationRadians = radians
+        updateHandlePosition()
     }
 
     /// Continuously spins the content at the given revolutions per minute,
@@ -115,6 +151,7 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         }
         spinning = true
         imageLayer.removeAnimation(forKey: "rotate")
+        handle.isHidden = true // dragging a handle mid-spin has no fixed target
 
         let start = currentRotationRadians
         imageLayer.transform = CATransform3DMakeRotation(start, 0, 0, 1)
@@ -161,6 +198,21 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         CATransaction.commit()
     }
 
+    /// Moves the drag handle to just outside the content's current "top"
+    /// (rotating with it), so it always affords grabbing to adjust further.
+    private func updateHandlePosition() {
+        let margin: CGFloat = 22
+        let theta = currentRotationRadians
+        let radius = unrotatedSize.height / 2 + margin
+        let dx = -radius * sin(theta)
+        let dy = radius * cos(theta)
+        let size = handle.frame.width
+        handle.frame.origin = CGPoint(
+            x: frame.width / 2 + dx - size / 2,
+            y: frame.height / 2 + dy - size / 2
+        )
+    }
+
     // MARK: - NSWindowDelegate
 
     /// Keep our logical center in sync when the user drags the overlay so
@@ -183,5 +235,54 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
             return
         }
         super.keyDown(with: event)
+    }
+}
+
+/// Small draggable knob that rotates the overlay to whatever angle the mouse
+/// currently makes with the window's center, for arbitrary/free rotation.
+private final class RotationHandleView: NSView {
+    weak var owner: OverlayWindow?
+    private var lastDegrees: Double = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = frameRect.width / 2
+        layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.9).cgColor
+        layer?.borderWidth = 2
+        toolTip = "Drag to rotate freely"
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) not used")
+    }
+
+    // The window's isMovableByWindowBackground otherwise treats a mouseDown
+    // here as a background-drag trigger (checked independently of whether we
+    // override mouseDown), which is why dragging the handle was moving the
+    // whole window instead of rotating.
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func mouseDown(with event: NSEvent) {
+        // Just needs to be recognized so mouseDragged fires; no state to set.
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let owner else { return }
+        let point = event.locationInWindow
+        let dx = point.x - owner.frame.width / 2
+        let dy = point.y - owner.frame.height / 2
+        // Angle from the window's "up" direction, matching the CCW rotation
+        // convention used for the content layer.
+        let theta = -atan2(dx, dy)
+        let degrees = Double(theta * 180 / .pi)
+        lastDegrees = degrees
+        owner.setFixedImmediate(degrees: degrees)
+        owner.onFreeRotate?(degrees)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        owner?.onFreeRotateEnd?(lastDegrees)
     }
 }

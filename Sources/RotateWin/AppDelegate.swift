@@ -114,9 +114,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func pickWindow() {
-        picker.begin { [weak self] window in
+        picker.begin { [weak self] window, choice in
             guard let self, let window else { return }
-            self.manager.rotate(window: window)
+            self.manager.rotate(window: window, choice: choice)
         }
     }
 

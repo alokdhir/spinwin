@@ -2,14 +2,17 @@ import AppKit
 import ScreenCaptureKit
 
 /// A full-screen overlay that lets you click a window to select it, like the
-/// macOS screenshot tool's window mode. Returns the chosen SCWindow.
+/// macOS screenshot tool's window mode — including a bottom options band for
+/// choosing the initial rotation (a preset angle, or free/manual rotation).
 @MainActor
 final class WindowPicker {
     private var pickerWindow: PickerWindow?
-    private var completion: ((SCWindow?) -> Void)?
+    private var completion: ((SCWindow?, ActivationChoice) -> Void)?
+    private var pendingChoice: ActivationChoice = .lastUsed
 
-    func begin(completion: @escaping (SCWindow?) -> Void) {
+    func begin(completion: @escaping (SCWindow?, ActivationChoice) -> Void) {
         self.completion = completion
+        self.pendingChoice = .lastUsed
         Task {
             let content = try? await SCShareableContent.excludingDesktopWindows(
                 false, onScreenWindowsOnly: true
@@ -40,12 +43,29 @@ final class WindowPicker {
         window.acceptsMouseMovedEvents = true
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let view = PickerView(frame: NSRect(origin: .zero, size: union.size))
+        let container = NSView(frame: NSRect(origin: .zero, size: union.size))
+
+        let view = PickerView(frame: container.bounds)
+        view.autoresizingMask = [.width, .height]
         view.candidates = candidates
         view.unionOrigin = union.origin
         view.onPick = { [weak self] window in self?.finish(window) }
         view.onCancel = { [weak self] in self?.finish(nil) }
-        window.contentView = view
+        container.addSubview(view)
+
+        let band = OptionsBandView(initialChoice: pendingChoice)
+        band.onSelect = { [weak self] choice in
+            self?.pendingChoice = choice
+            ActivationChoice.lastUsed = choice
+        }
+        band.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(band)
+        NSLayoutConstraint.activate([
+            band.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            band.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -36)
+        ])
+
+        window.contentView = container
 
         pickerWindow = window
         NSApp.activate(ignoringOtherApps: true)
@@ -58,9 +78,10 @@ final class WindowPicker {
         pickerWindow = nil
         let completion = self.completion
         self.completion = nil
+        let choice = pendingChoice
         // Defer so the shield-level picker window is fully torn down before any
         // follow-up UI (e.g. an alert) appears; otherwise it can sit behind it.
-        DispatchQueue.main.async { completion?(window) }
+        DispatchQueue.main.async { completion?(window, choice) }
     }
 }
 
@@ -68,6 +89,86 @@ final class WindowPicker {
 private final class PickerWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+}
+
+/// The floating "how should this rotate" control bar, styled like the
+/// screenshot tool's bottom toolbar: preset angles plus a free-rotation
+/// option, remembering the last choice as the default.
+private final class OptionsBandView: NSView {
+    var onSelect: ((ActivationChoice) -> Void)?
+    private var buttons: [NSButton] = []
+
+    init(initialChoice: ActivationChoice) {
+        super.init(frame: .zero)
+
+        let effect = NSVisualEffectView()
+        effect.material = .hudWindow
+        effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = 14
+        effect.layer?.masksToBounds = true
+        effect.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(effect)
+
+        let stack = NSStackView()
+        stack.orientation = .horizontal
+        stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        effect.addSubview(stack)
+
+        for choice in ActivationChoice.presets {
+            let button = Self.makeButton(for: choice, target: self, action: #selector(tapped(_:)))
+            buttons.append(button)
+            stack.addView(button, in: .center)
+        }
+
+        NSLayoutConstraint.activate([
+            effect.leadingAnchor.constraint(equalTo: leadingAnchor),
+            effect.trailingAnchor.constraint(equalTo: trailingAnchor),
+            effect.topAnchor.constraint(equalTo: topAnchor),
+            effect.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: effect.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: effect.bottomAnchor)
+        ])
+
+        select(initialChoice)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) not used") }
+
+    private static func makeButton(for choice: ActivationChoice, target: AnyObject, action: Selector) -> NSButton {
+        let button = NSButton(title: choice.label, target: target, action: action)
+        if case .free = choice, let image = NSImage(systemSymbolName: choice.symbolName, accessibilityDescription: choice.tooltip) {
+            button.image = image
+            button.imagePosition = .imageLeading
+        }
+        button.tag = ActivationChoice.presets.firstIndex(of: choice) ?? 0
+        button.bezelStyle = .rounded
+        button.toolTip = choice.tooltip
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 6
+        return button
+    }
+
+    @objc private func tapped(_ sender: NSButton) {
+        guard ActivationChoice.presets.indices.contains(sender.tag) else { return }
+        let choice = ActivationChoice.presets[sender.tag]
+        select(choice)
+        onSelect?(choice)
+    }
+
+    private func select(_ choice: ActivationChoice) {
+        for (index, button) in buttons.enumerated() {
+            let isSelected = ActivationChoice.presets[index] == choice
+            button.contentTintColor = isSelected ? .controlAccentColor : nil
+            button.layer?.backgroundColor = isSelected
+                ? NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
+                : NSColor.clear.cgColor
+        }
+    }
 }
 
 /// Draws the dimmed backdrop, highlights the hovered window, and reports clicks.

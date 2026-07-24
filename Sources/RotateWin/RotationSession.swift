@@ -62,6 +62,16 @@ final class RotationSession {
             self.stop()
             self.onExternalStop?(self)
         }
+        // The overlay's drag handle rotates the layer directly (no animation
+        // needed while dragging); just keep our own state in sync so the menu
+        // checkmarks and later spring transitions start from the right angle.
+        overlay.onFreeRotate = { [weak self] degrees in
+            self?.degrees = degrees
+            self?.spinning = false
+        }
+        overlay.onFreeRotateEnd = { [weak self] degrees in
+            self?.degrees = degrees
+        }
         self.overlay = overlay
         applyRotation()
         overlay.orderFrontRegardless()
