@@ -215,20 +215,7 @@ private final class OptionsBandView: NSView {
     /// spreads horizontally and overshoots slightly before settling. Against the
     /// dimmed backdrop a static bar is easy to miss; the overshoot is the cue.
     func playEntranceAnimation() {
-        guard let layer else { return }
-
-        // A view's backing layer anchors at its bottom-left corner, so scaling
-        // it would expand rightward from the left edge instead of opening out
-        // from the middle. Re-anchor to the center and move the layer's position
-        // to match, which keeps it visually in the same place. (Assigning frame
-        // recomputes position from the anchor, so later layout passes are fine.)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        if layer.anchorPoint != CGPoint(x: 0.5, y: 0.5) {
-            layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-            layer.position = CGPoint(x: frame.midX, y: frame.midY)
-        }
-        CATransaction.commit()
+        guard let layer, layer.bounds.width > 1 else { return }
 
         // Respect the system setting: for anyone who has asked for less motion,
         // a plain fade conveys the same thing without the movement.
@@ -241,31 +228,36 @@ private final class OptionsBandView: NSView {
             return
         }
 
-        // Under-damped on purpose: the overshoot *is* the attention cue.
-        func spring(_ keyPath: String, from: CGFloat, to: CGFloat) -> CASpringAnimation {
-            let animation = CASpringAnimation(keyPath: keyPath)
-            animation.fromValue = from
-            animation.toValue = to
-            animation.mass = 1
-            animation.stiffness = 220
-            animation.damping = 13
-            animation.initialVelocity = 0
-            animation.duration = animation.settlingDuration
-            animation.fillMode = .backwards
-            return animation
+        // A view's backing layer is anchored at its bottom-left corner, and
+        // AppKit resets anchorPoint/position on every commit, so they can't be
+        // changed to move the scaling origin. Instead the transform itself
+        // brackets the scale with translations to and from the center, which
+        // makes it grow outward from the middle with the anchor left alone.
+        let size = layer.bounds.size
+        func centeredScale(x: CGFloat, y: CGFloat, rise: CGFloat) -> CATransform3D {
+            var transform = CATransform3DMakeTranslation(0, rise, 0)
+            transform = CATransform3DTranslate(transform, size.width / 2, size.height / 2, 0)
+            transform = CATransform3DScale(transform, x, y, 1)
+            return CATransform3DTranslate(transform, -size.width / 2, -size.height / 2, 0)
         }
 
         // Start at the width of a narrow spout. The band's 21pt corner radius
         // means that at this width it already reads as a rounded pill, so the
         // spread looks like one continuous pour.
         let pillWidth: CGFloat = 46
-        let startScaleX = min(1, pillWidth / max(layer.bounds.width, 1))
-        layer.add(spring("transform.scale.x", from: startScaleX, to: 1), forKey: "entranceSpread")
-        layer.add(spring("transform.scale.y", from: 0.62, to: 1), forKey: "entranceScaleY")
+        let startScaleX = min(1, pillWidth / size.width)
 
-        // Cocoa's y grows upward, so a smaller y starts it below where it lands.
-        let restingY = layer.position.y
-        layer.add(spring("position.y", from: restingY - 10, to: restingY), forKey: "entranceRise")
+        // Under-damped on purpose: the overshoot *is* the attention cue.
+        let spread = CASpringAnimation(keyPath: "transform")
+        spread.fromValue = NSValue(caTransform3D: centeredScale(x: startScaleX, y: 0.62, rise: -10))
+        spread.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        spread.mass = 1
+        spread.stiffness = 220
+        spread.damping = 13
+        spread.initialVelocity = 0
+        spread.duration = spread.settlingDuration
+        spread.fillMode = .backwards
+        layer.add(spread, forKey: "entranceSpread")
 
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 0
