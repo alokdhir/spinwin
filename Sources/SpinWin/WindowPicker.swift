@@ -84,6 +84,11 @@ final class WindowPicker {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
+
+        // Lay out first so the band knows its resting position, then spring it
+        // in from there — otherwise the animation starts from a zero frame.
+        container.layoutSubtreeIfNeeded()
+        band.playEntranceAnimation()
     }
 
     private func finish(_ window: SCWindow?) {
@@ -121,6 +126,9 @@ private final class OptionsBandView: NSView {
         self.direction = initialDirection
         self.selectedChoice = initialChoice
         super.init(frame: .zero)
+        // Layer-backed up front so the entrance animation has a layer with the
+        // correct geometry once Auto Layout has positioned the band.
+        wantsLayer = true
 
         let effect = NSVisualEffectView()
         effect.material = .hudWindow
@@ -172,6 +180,37 @@ private final class OptionsBandView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) not used") }
+
+    /// Springs the band up into place when the picker opens. Against the dimmed
+    /// backdrop a static bar is easy to miss, so it rises from just below its
+    /// resting spot and overshoots slightly to pull the eye down to it.
+    func playEntranceAnimation() {
+        guard let layer else { return }
+
+        // Under-damped on purpose: the overshoot *is* the attention cue.
+        func spring(_ keyPath: String, from: CGFloat, to: CGFloat) -> CASpringAnimation {
+            let animation = CASpringAnimation(keyPath: keyPath)
+            animation.fromValue = from
+            animation.toValue = to
+            animation.mass = 1
+            animation.stiffness = 220
+            animation.damping = 13
+            animation.initialVelocity = 0
+            animation.duration = animation.settlingDuration
+            return animation
+        }
+
+        // Cocoa's y grows upward, so a smaller y starts it below where it lands.
+        let restingY = layer.position.y
+        layer.add(spring("position.y", from: restingY - 26, to: restingY), forKey: "entranceRise")
+        layer.add(spring("transform.scale", from: 0.86, to: 1), forKey: "entranceScale")
+
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.duration = 0.16
+        layer.add(fade, forKey: "entranceFade")
+    }
 
     private static func makeButton(for choice: ActivationChoice, target: AnyObject, action: Selector) -> NSButton {
         let button = NSButton(title: choice.label, target: target, action: action)
