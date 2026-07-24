@@ -28,6 +28,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/RotateWin"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
+	cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+fi
 
 echo "Signing with: $SIGN_IDENTITY"
 if [ "$SIGN_IDENTITY" = "-" ]; then
