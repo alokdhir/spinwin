@@ -12,6 +12,30 @@ final class RotationManager {
 
     var isEmpty: Bool { sessions.isEmpty }
 
+    private var screenObserver: NSObjectProtocol?
+
+    init() {
+        // Parking spots are derived from the union of all displays, so any
+        // display change (disconnect, resolution switch, docking) can leave a
+        // hidden window back inside the visible desktop, where it shows up
+        // unrotated beside its own overlay. Re-hide them when that happens.
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.sessions.forEach { $0.repark() }
+            }
+        }
+    }
+
+    deinit {
+        if let screenObserver {
+            NotificationCenter.default.removeObserver(screenObserver)
+        }
+    }
+
     /// Starts rotating `window` at the given initial activation choice, or —
     /// if it's already being rotated — re-applies the choice to the existing
     /// session (so re-picking a window changes its rotation instead of doing
@@ -39,6 +63,9 @@ final class RotationManager {
         }
         session.onChanged = { [weak self] in
             self?.onStateChange?()
+        }
+        session.onFailure = { [weak self] reason in
+            self?.warn(reason)
         }
         if let reason = session.start() {
             warn(reason)

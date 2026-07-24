@@ -10,8 +10,15 @@ final class WindowPicker {
     private var completion: ((SCWindow?, ActivationChoice, SpinDirection) -> Void)?
     private var pendingChoice: ActivationChoice = .lastUsed
     private var pendingDirection: SpinDirection = .lastUsed
+    /// True from the moment a pick starts until it finishes. Menubar buttons
+    /// fire on every mouse-up, so a double-click would otherwise start a second
+    /// pick and orphan the first shield window: nothing would hold a reference
+    /// to order it out, leaving the screen permanently dimmed and unclickable.
+    private var isPicking = false
 
     func begin(completion: @escaping (SCWindow?, ActivationChoice, SpinDirection) -> Void) {
+        guard !isPicking else { return }
+        isPicking = true
         self.completion = completion
         self.pendingChoice = .lastUsed
         self.pendingDirection = .lastUsed
@@ -82,6 +89,7 @@ final class WindowPicker {
     private func finish(_ window: SCWindow?) {
         pickerWindow?.orderOut(nil)
         pickerWindow = nil
+        isPicking = false
         let completion = self.completion
         self.completion = nil
         let choice = pendingChoice

@@ -32,6 +32,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Permissions.requestAll()
     }
 
+    /// Rotated windows are parked far off-screen, so they MUST be put back
+    /// before we exit. Quitting via the menu goes through `quit()`, but logout,
+    /// restart, and `terminate` from anywhere else land here instead — without
+    /// this the user is left with windows they can't see or recover.
+    func applicationWillTerminate(_ notification: Notification) {
+        manager.stopAll()
+    }
+
     // MARK: - Status item click
 
     /// Left click jumps straight to picking a window; right click (or
@@ -100,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.target = self
             item.tag = Int(degrees)
             item.representedObject = session
-            item.state = (!session.spinning && session.degrees == degrees) ? .on : .off
+            item.state = (!session.spinning && Self.angle(session.degrees, matches: degrees)) ? .on : .off
             submenu.addItem(item)
         }
 
@@ -127,6 +135,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let header = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
+    }
+
+    /// Whether a session's current angle should read as "at" a preset. Free
+    /// rotation produces unrounded, unwrapped values (-90.0000001 for what the
+    /// user sees as 270°), so exact equality would leave every preset unchecked
+    /// even when the window is visually sitting on one.
+    private static func angle(_ degrees: Double, matches preset: Double) -> Bool {
+        func normalized(_ value: Double) -> Double {
+            let wrapped = value.truncatingRemainder(dividingBy: 360)
+            return wrapped < 0 ? wrapped + 360 : wrapped
+        }
+        let delta = abs(normalized(degrees) - normalized(preset))
+        return min(delta, 360 - delta) < 0.5
     }
 
     // MARK: - Actions

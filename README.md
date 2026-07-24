@@ -62,6 +62,11 @@ to rotate freely. Press **Esc** on the overlay to stop and restore the window.
   to exclude another app's window from Mission Control, and minimizing it would
   stop the capture.
 - Some apps throttle rendering of off-screen windows, which can slow the feed.
+- **A window that resizes itself while rotated keeps its original footprint.**
+  You can't drag-resize the hidden window, but an app can still resize it on its
+  own (a video player adapting to a new track, a terminal responding to an escape
+  sequence). The capture is letterboxed into the original size until you stop and
+  rotate it again.
 
 ## Layout
 

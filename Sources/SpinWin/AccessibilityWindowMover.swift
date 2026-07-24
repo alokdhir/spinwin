@@ -65,7 +65,7 @@ final class AccessibilityWindowMover {
         // the bottom/right than going off the top (likely because there's
         // never a display above y=0, so pushing up/left gets snapped back
         // near the top-left, leaving a full-height sliver visible instead).
-        let target = Self.offScreenTarget(for: frame)
+        let target = Self.offScreenTarget()
         let setErr = setPosition(target, on: element)
         if setErr != .success {
             lastFailure = "Setting off-screen position failed (AXError \(setErr.rawValue))."
@@ -81,7 +81,7 @@ final class AccessibilityWindowMover {
     /// A position just past the bottom-right of the total desktop, chosen so
     /// only ~1px of the window would overlap any display if macOS lets it,
     /// while still being deep enough to satisfy any minimum-overlap clamp.
-    private static func offScreenTarget(for frame: CGRect) -> CGPoint {
+    private static func offScreenTarget() -> CGPoint {
         var displayCount: UInt32 = 0
         CGGetActiveDisplayList(0, nil, &displayCount)
         var displayIDs = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
@@ -101,6 +101,18 @@ final class AccessibilityWindowMover {
         }
         movedElement = nil
         originalPosition = nil
+    }
+
+    /// Pushes the hidden window off-screen again against the *current* display
+    /// arrangement. Needed after a display change: the parking spot is derived
+    /// from the union of all displays, so disconnecting one (or changing its
+    /// resolution) leaves the window inside the new, smaller desktop, where it
+    /// pops back into view next to its own overlay and breaks the illusion.
+    func repark() {
+        guard let element = movedElement else { return }
+        let target = Self.offScreenTarget()
+        if let current = position(of: element), current == target { return }
+        _ = setPosition(target, on: element)
     }
 
     // MARK: - Private
@@ -124,23 +136,30 @@ final class AccessibilityWindowMover {
         return nil
     }
 
-    private func position(of element: AXUIElement) -> CGPoint? {
+    /// Reads an attribute that is expected to hold an `AXValue`. The type is
+    /// verified at runtime because this data comes from arbitrary third-party
+    /// apps: an app returning something unexpected should make us bail, not
+    /// crash the whole utility.
+    private func axValue(of element: AXUIElement, attribute: String) -> AXValue? {
         var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &value) == .success else {
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXValueGetTypeID() else {
             return nil
         }
+        return (value as! AXValue)
+    }
+
+    private func position(of element: AXUIElement) -> CGPoint? {
+        guard let axValue = axValue(of: element, attribute: kAXPositionAttribute) else { return nil }
         var point = CGPoint.zero
-        AXValueGetValue(value as! AXValue, .cgPoint, &point)
+        guard AXValueGetValue(axValue, .cgPoint, &point) else { return nil }
         return point
     }
 
     private func size(of element: AXUIElement) -> CGSize? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &value) == .success else {
-            return nil
-        }
+        guard let axValue = axValue(of: element, attribute: kAXSizeAttribute) else { return nil }
         var size = CGSize.zero
-        AXValueGetValue(value as! AXValue, .cgSize, &size)
+        guard AXValueGetValue(axValue, .cgSize, &size) else { return nil }
         return size
     }
 

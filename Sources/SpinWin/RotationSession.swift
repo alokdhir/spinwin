@@ -16,6 +16,11 @@ final class RotationSession {
 
     /// Called when this session stops on its own (e.g. system "Stop Sharing").
     var onExternalStop: ((RotationSession) -> Void)?
+    /// Called with a human-readable reason when the session fails *after*
+    /// `start()` already returned success (capture can only fail asynchronously),
+    /// so the failure is shown instead of vanishing into the log while the user
+    /// watches their window disappear and come back for no apparent reason.
+    var onFailure: ((String) -> Void)?
     /// Called when rotation state changes from something other than a menu
     /// action (free-drag settling, click-to-stop-spin), so the menu checkmarks
     /// can be refreshed.
@@ -97,9 +102,11 @@ final class RotationSession {
                     self?.overlay?.update(surface: surface)
                 }
             } catch {
-                NSLog("SpinWin: capture failed: \(error.localizedDescription)")
+                let reason = "Could not capture “\(title)”: \(error.localizedDescription)"
+                NSLog("SpinWin: \(reason)")
                 stop()
                 onExternalStop?(self)
+                onFailure?(reason)
             }
         }
         return nil
@@ -111,6 +118,13 @@ final class RotationSession {
         overlay = nil
         mover.restore()
         isRunning = false
+    }
+
+    /// Re-hides the source window after a display change, which can otherwise
+    /// pull it back into view alongside its own overlay.
+    func repark() {
+        guard isRunning else { return }
+        mover.repark()
     }
 
     func setFixed(degrees: Double) {
