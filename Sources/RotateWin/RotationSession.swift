@@ -11,22 +11,28 @@ final class RotationSession {
     private(set) var degrees: Double
     private(set) var spinning: Bool
     private(set) var rpm: Double
+    private(set) var spinDirection: SpinDirection
     private(set) var isRunning = false
 
     /// Called when this session stops on its own (e.g. system "Stop Sharing").
     var onExternalStop: ((RotationSession) -> Void)?
+    /// Called when rotation state changes from something other than a menu
+    /// action (free-drag settling, click-to-stop-spin), so the menu checkmarks
+    /// can be refreshed.
+    var onChanged: (() -> Void)?
 
     private let window: SCWindow
     private let capture = CaptureEngine()
     private let mover = AccessibilityWindowMover()
     private var overlay: OverlayWindow?
 
-    init(window: SCWindow, degrees: Double = 180, spinning: Bool = false, rpm: Double = 15) {
+    init(window: SCWindow, degrees: Double = 180, spinning: Bool = false, rpm: Double = 15, spinDirection: SpinDirection = .clockwise) {
         self.window = window
         self.windowID = window.windowID
         self.degrees = degrees
         self.spinning = spinning
         self.rpm = rpm
+        self.spinDirection = spinDirection
 
         let app = window.owningApplication?.applicationName ?? "Unknown"
         let name = (window.title?.isEmpty == false) ? window.title! : "(untitled)"
@@ -71,6 +77,13 @@ final class RotationSession {
         }
         overlay.onFreeRotateEnd = { [weak self] degrees in
             self?.degrees = degrees
+            self?.onChanged?()
+        }
+        overlay.onSpinStoppedByClick = { [weak self] degrees in
+            guard let self else { return }
+            self.degrees = degrees
+            self.spinning = false
+            self.onChanged?()
         }
         self.overlay = overlay
         applyRotation()
@@ -111,12 +124,19 @@ final class RotationSession {
         applyRotation()
     }
 
+    func setSpin(rpm: Double, direction: SpinDirection) {
+        self.rpm = rpm
+        self.spinDirection = direction
+        spinning = true
+        applyRotation()
+    }
+
     // MARK: - Private
 
     private func applyRotation() {
         guard let overlay else { return }
         if spinning {
-            overlay.startSpin(rpm: rpm)
+            overlay.startSpin(rpm: rpm, direction: spinDirection)
         } else {
             overlay.setFixed(degrees: degrees)
         }

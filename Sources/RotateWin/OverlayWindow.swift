@@ -26,6 +26,9 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
     var onFreeRotate: ((Double) -> Void)?
     /// Called once the handle drag ends, so callers can trigger a settle.
     var onFreeRotateEnd: ((Double) -> Void)?
+    /// Called when the background is clicked (not dragged) while spinning,
+    /// with the angle (degrees) it froze at.
+    var onSpinStoppedByClick: ((Double) -> Void)?
 
     init() {
         super.init(
@@ -44,12 +47,16 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         level = .normal
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         ignoresMouseEvents = false
-        isMovableByWindowBackground = true
+        // Dragging is now handled manually by BackgroundDragView (so a plain
+        // click, as opposed to a drag, can be distinguished and used to stop
+        // a spin) rather than via the automatic background-drag machinery.
+        isMovableByWindowBackground = false
         delegate = self
 
         let container = NSView()
 
-        let hosting = NSView()
+        let hosting = BackgroundDragView()
+        hosting.owner = self
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
         imageLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
@@ -142,7 +149,7 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
 
     /// Continuously spins the content at the given revolutions per minute,
     /// continuing smoothly from whatever angle is currently showing.
-    func startSpin(rpm: Double) {
+    func startSpin(rpm: Double, direction: SpinDirection) {
         self.rpm = rpm
         applyGeometry(boxSize: diagonalBoxSize)
 
@@ -158,11 +165,37 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
 
         let animation = CABasicAnimation(keyPath: "transform.rotation.z")
         animation.fromValue = start
-        animation.toValue = start + 2 * Double.pi
+        animation.toValue = start + direction.signedTurn * 2 * Double.pi
         animation.duration = max(0.1, 60.0 / rpm)
         animation.repeatCount = .infinity
         animation.isRemovedOnCompletion = false
         imageLayer.add(animation, forKey: "spin")
+    }
+
+    /// Stops a continuous spin at whatever angle it's currently showing,
+    /// freezing in place (no further animation) rather than snapping to a
+    /// preset. Returns the angle it froze at, or nil if not spinning.
+    @discardableResult
+    func stopSpin() -> Double? {
+        guard spinning else { return nil }
+        let presented = (imageLayer.presentation()?.value(forKeyPath: "transform.rotation.z") as? CGFloat)
+            ?? currentRotationRadians
+        let presentedDegrees = Double(presented * 180 / .pi)
+        setFixed(degrees: presentedDegrees) // from == to at the presented value: locks in place, no bounce
+        return presentedDegrees
+    }
+
+    /// Repositions the overlay (used for manual background dragging).
+    func moveTo(origin: CGPoint) {
+        setFrameOrigin(origin)
+    }
+
+    var currentOrigin: CGPoint { frame.origin }
+
+    fileprivate func backgroundWasClicked() {
+        if let degrees = stopSpin() {
+            onSpinStoppedByClick?(degrees)
+        }
     }
 
     /// Bounding box (in points) large enough to contain the unrotated content
@@ -236,6 +269,64 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         }
         super.keyDown(with: event)
     }
+
+    // AppKit's default -setFrame:display: (used by applyGeometry) silently
+    // constrains the proposed frame to keep the window mostly on-screen,
+    // which is exactly what stopped drags a short way past the top edge.
+    // Disable that entirely so the window can hang off any edge as far as
+    // the user drags it.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+}
+
+/// Hosts the captured content and distinguishes a plain click (stops a spin)
+/// from a drag (repositions the overlay), replacing the automatic
+/// isMovableByWindowBackground behavior so the two can be told apart.
+private final class BackgroundDragView: NSView {
+    weak var owner: OverlayWindow?
+
+    private var totalMovement: CGFloat = 0
+    private var didDrag = false
+    private static let dragThreshold: CGFloat = 4
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    // Without this, the first click while the overlay isn't yet key is
+    // consumed just to activate/focus it (standard AppKit "click-through"
+    // behavior) and never reaches mouseDown at all — exactly why the handle
+    // and background needed a second click/drag to do anything.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        totalMovement = 0
+        didDrag = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let owner else { return }
+        // Use the event's raw hardware deltas, not absolute cursor position:
+        // NSEvent.mouseLocation is clamped to the physical display bounds
+        // (the cursor can't report a position above the topmost monitor), so
+        // computing movement from absolute positions silently stops the drag
+        // once the cursor reaches a screen edge. Deltas keep flowing past it,
+        // letting the window hang off-screen as far as the user drags.
+        totalMovement += hypot(event.deltaX, event.deltaY)
+        if !didDrag, totalMovement > Self.dragThreshold {
+            didDrag = true
+        }
+        if didDrag {
+            let current = owner.currentOrigin
+            owner.moveTo(origin: CGPoint(x: current.x + event.deltaX, y: current.y - event.deltaY))
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if !didDrag {
+            owner?.backgroundWasClicked()
+        }
+        didDrag = false
+    }
 }
 
 /// Small draggable knob that rotates the overlay to whatever angle the mouse
@@ -263,6 +354,11 @@ private final class RotationHandleView: NSView {
     // override mouseDown), which is why dragging the handle was moving the
     // whole window instead of rotating.
     override var mouseDownCanMoveWindow: Bool { false }
+
+    // Without this, the first click/drag while the overlay isn't yet key is
+    // consumed just to activate it and never reaches mouseDown/mouseDragged —
+    // why the handle needed a second attempt to actually rotate anything.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
         // Just needs to be recognized so mouseDragged fires; no state to set.

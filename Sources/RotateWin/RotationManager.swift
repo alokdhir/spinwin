@@ -21,9 +21,18 @@ final class RotationManager {
         }
         if sessions.contains(where: { $0.windowID == window.windowID }) { return }
 
-        let session = RotationSession(window: window, degrees: choice.initialDegrees)
+        let session = RotationSession(
+            window: window,
+            degrees: choice.initialDegrees,
+            spinning: choice.initialSpinning,
+            rpm: choice.initialRPM,
+            spinDirection: SpinDirection.lastUsed
+        )
         session.onExternalStop = { [weak self] session in
             self?.remove(session)
+        }
+        session.onChanged = { [weak self] in
+            self?.onStateChange?()
         }
         if let reason = session.start() {
             warn(reason)

@@ -62,7 +62,7 @@ final class WindowPicker {
         container.addSubview(band)
         NSLayoutConstraint.activate([
             band.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            band.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -36)
+            band.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -70)
         ])
 
         window.contentView = container
@@ -97,6 +97,8 @@ private final class PickerWindow: NSWindow {
 private final class OptionsBandView: NSView {
     var onSelect: ((ActivationChoice) -> Void)?
     private var buttons: [NSButton] = []
+    private var directionButton: NSButton?
+    private var direction = SpinDirection.lastUsed
 
     init(initialChoice: ActivationChoice) {
         super.init(frame: .zero)
@@ -105,22 +107,34 @@ private final class OptionsBandView: NSView {
         effect.material = .hudWindow
         effect.state = .active
         effect.wantsLayer = true
-        effect.layer?.cornerRadius = 14
+        effect.layer?.cornerRadius = 21
         effect.layer?.masksToBounds = true
         effect.translatesAutoresizingMaskIntoConstraints = false
         addSubview(effect)
 
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        stack.spacing = 9
+        stack.edgeInsets = NSEdgeInsets(top: 12, left: 18, bottom: 12, right: 18)
         stack.translatesAutoresizingMaskIntoConstraints = false
         effect.addSubview(stack)
 
         for choice in ActivationChoice.presets {
+            // A thin divider between the angle, spin, and free clusters.
+            if choice == ActivationChoice.spinPresets.first || choice == .free {
+                stack.addView(Self.makeDivider(), in: .center)
+            }
             let button = Self.makeButton(for: choice, target: self, action: #selector(tapped(_:)))
             buttons.append(button)
             stack.addView(button, in: .center)
+
+            // The direction toggle belongs with the spin cluster, right after
+            // its speed buttons.
+            if choice == ActivationChoice.spinPresets.last {
+                let toggle = Self.makeDirectionButton(target: self, action: #selector(directionTapped))
+                directionButton = toggle
+                stack.addView(toggle, in: .center)
+            }
         }
 
         NSLayoutConstraint.activate([
@@ -135,21 +149,47 @@ private final class OptionsBandView: NSView {
         ])
 
         select(initialChoice)
+        updateDirectionButton()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) not used") }
 
     private static func makeButton(for choice: ActivationChoice, target: AnyObject, action: Selector) -> NSButton {
         let button = NSButton(title: choice.label, target: target, action: action)
-        if case .free = choice, let image = NSImage(systemSymbolName: choice.symbolName, accessibilityDescription: choice.tooltip) {
+        if let symbolName = choice.symbolName {
+            let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+            let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: choice.tooltip)?
+                .withSymbolConfiguration(config)
             button.image = image
             button.imagePosition = .imageLeading
         }
         button.tag = ActivationChoice.presets.firstIndex(of: choice) ?? 0
         button.bezelStyle = .rounded
+        // pushOnPushOff gives a native, always-visible highlighted/pressed
+        // look for the "on" state — plain rounded buttons paint their own
+        // bezel over any custom background tint, which is why a manually
+        // drawn "selected" background wasn't actually visible.
+        button.setButtonType(.pushOnPushOff)
+        button.font = NSFont.systemFont(ofSize: 15, weight: .medium)
         button.toolTip = choice.tooltip
-        button.wantsLayer = true
-        button.layer?.cornerRadius = 6
+        return button
+    }
+
+    private static func makeDivider() -> NSView {
+        let box = NSBox()
+        box.boxType = .separator
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.widthAnchor.constraint(equalToConstant: 1).isActive = true
+        box.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        return box
+    }
+
+    /// A single button that toggles between clockwise/counterclockwise for
+    /// the spin presets, rather than two separate direction buttons.
+    private static func makeDirectionButton(target: AnyObject, action: Selector) -> NSButton {
+        let button = NSButton(title: "", target: target, action: action)
+        button.bezelStyle = .rounded
+        button.imagePosition = .imageOnly
         return button
     }
 
@@ -160,13 +200,22 @@ private final class OptionsBandView: NSView {
         onSelect?(choice)
     }
 
+    @objc private func directionTapped() {
+        direction.toggle()
+        SpinDirection.lastUsed = direction
+        updateDirectionButton()
+    }
+
+    private func updateDirectionButton() {
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        directionButton?.image = NSImage(systemSymbolName: direction.symbolName, accessibilityDescription: direction.tooltip)?
+            .withSymbolConfiguration(config)
+        directionButton?.toolTip = direction.tooltip
+    }
+
     private func select(_ choice: ActivationChoice) {
         for (index, button) in buttons.enumerated() {
-            let isSelected = ActivationChoice.presets[index] == choice
-            button.contentTintColor = isSelected ? .controlAccentColor : nil
-            button.layer?.backgroundColor = isSelected
-                ? NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
-                : NSColor.clear.cgColor
+            button.state = (ActivationChoice.presets[index] == choice) ? .on : .off
         }
     }
 }
