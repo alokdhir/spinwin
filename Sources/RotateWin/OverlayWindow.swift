@@ -111,18 +111,27 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         let delta = Self.shortestDelta(from: currentRotationRadians, to: targetRadians)
         let newRotationRadians = currentRotationRadians + delta
 
-        let animation = CASpringAnimation(keyPath: "transform.rotation.z")
-        animation.fromValue = currentRotationRadians
-        animation.toValue = newRotationRadians
-        animation.mass = 1
-        animation.stiffness = 180
-        animation.damping = 14
-        animation.initialVelocity = 0
-        animation.duration = animation.settlingDuration
-
         imageLayer.removeAnimation(forKey: "rotate")
-        imageLayer.transform = CATransform3DMakeRotation(newRotationRadians, 0, 0, 1)
-        imageLayer.add(animation, forKey: "rotate")
+
+        // No meaningful turn (e.g. freezing a spin in place): set it directly
+        // instead of adding a spring that would animate nothing.
+        if abs(delta) < 0.0001 {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            imageLayer.transform = CATransform3DMakeRotation(newRotationRadians, 0, 0, 1)
+            CATransaction.commit()
+        } else {
+            let animation = CASpringAnimation(keyPath: "transform.rotation.z")
+            animation.fromValue = currentRotationRadians
+            animation.toValue = newRotationRadians
+            animation.mass = 1
+            animation.stiffness = 180
+            animation.damping = 14
+            animation.initialVelocity = 0
+            animation.duration = animation.settlingDuration
+            imageLayer.transform = CATransform3DMakeRotation(newRotationRadians, 0, 0, 1)
+            imageLayer.add(animation, forKey: "rotate")
+        }
 
         currentRotationRadians = newRotationRadians
         handle.isHidden = false
@@ -288,6 +297,7 @@ private final class BackgroundDragView: NSView {
 
     private var totalMovement: CGFloat = 0
     private var didDrag = false
+    private var pointerDetached = false
     private static let dragThreshold: CGFloat = 4
 
     override var mouseDownCanMoveWindow: Bool { false }
@@ -301,19 +311,21 @@ private final class BackgroundDragView: NSView {
     override func mouseDown(with event: NSEvent) {
         totalMovement = 0
         didDrag = false
+        pointerDetached = false
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let owner else { return }
-        // Use the event's raw hardware deltas, not absolute cursor position:
-        // NSEvent.mouseLocation is clamped to the physical display bounds
-        // (the cursor can't report a position above the topmost monitor), so
-        // computing movement from absolute positions silently stops the drag
-        // once the cursor reaches a screen edge. Deltas keep flowing past it,
-        // letting the window hang off-screen as far as the user drags.
         totalMovement += hypot(event.deltaX, event.deltaY)
         if !didDrag, totalMovement > Self.dragThreshold {
             didDrag = true
+            // Detach + hide the cursor for the rest of the drag. The window
+            // then tracks raw motion deltas (which, unlike the cursor, aren't
+            // clamped to the screen edge, so it can hang off any edge), and
+            // with no visible cursor there's nothing to appear to "drift".
+            CGAssociateMouseAndMouseCursorPosition(0)
+            NSCursor.hide()
+            pointerDetached = true
         }
         if didDrag {
             let current = owner.currentOrigin
@@ -324,6 +336,11 @@ private final class BackgroundDragView: NSView {
     override func mouseUp(with event: NSEvent) {
         if !didDrag {
             owner?.backgroundWasClicked()
+        }
+        if pointerDetached {
+            CGAssociateMouseAndMouseCursorPosition(1)
+            NSCursor.unhide()
+            pointerDetached = false
         }
         didDrag = false
     }

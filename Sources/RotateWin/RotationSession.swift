@@ -131,6 +131,22 @@ final class RotationSession {
         applyRotation()
     }
 
+    /// Re-applies an activation choice to an already-running session (used when
+    /// the same window is picked again).
+    func apply(choice: ActivationChoice, direction: SpinDirection) {
+        spinDirection = direction
+        switch choice {
+        case .angle(let degrees):
+            setFixed(degrees: degrees)
+        case .spin(let rpm):
+            setSpin(rpm: rpm, direction: direction)
+        case .free:
+            // Keep the current angle; just make sure it isn't spinning so the
+            // drag handle is available.
+            setFixed(degrees: degrees)
+        }
+    }
+
     // MARK: - Private
 
     private func applyRotation() {

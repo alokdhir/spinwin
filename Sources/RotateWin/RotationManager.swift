@@ -12,21 +12,27 @@ final class RotationManager {
 
     var isEmpty: Bool { sessions.isEmpty }
 
-    /// Starts rotating `window` at the given initial activation choice (a
-    /// preset angle, or free), or brings its existing session to the front.
-    func rotate(window: SCWindow, choice: ActivationChoice) {
+    /// Starts rotating `window` at the given initial activation choice, or —
+    /// if it's already being rotated — re-applies the choice to the existing
+    /// session (so re-picking a window changes its rotation instead of doing
+    /// nothing).
+    func rotate(window: SCWindow, choice: ActivationChoice, direction: SpinDirection) {
         guard AccessibilityWindowMover.ensureTrusted() else {
             warn("Accessibility permission is required to hide the source window.")
             return
         }
-        if sessions.contains(where: { $0.windowID == window.windowID }) { return }
+        if let existing = sessions.first(where: { $0.windowID == window.windowID }) {
+            existing.apply(choice: choice, direction: direction)
+            onStateChange?()
+            return
+        }
 
         let session = RotationSession(
             window: window,
             degrees: choice.initialDegrees,
             spinning: choice.initialSpinning,
             rpm: choice.initialRPM,
-            spinDirection: SpinDirection.lastUsed
+            spinDirection: direction
         )
         session.onExternalStop = { [weak self] session in
             self?.remove(session)

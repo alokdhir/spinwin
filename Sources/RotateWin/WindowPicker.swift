@@ -7,12 +7,14 @@ import ScreenCaptureKit
 @MainActor
 final class WindowPicker {
     private var pickerWindow: PickerWindow?
-    private var completion: ((SCWindow?, ActivationChoice) -> Void)?
+    private var completion: ((SCWindow?, ActivationChoice, SpinDirection) -> Void)?
     private var pendingChoice: ActivationChoice = .lastUsed
+    private var pendingDirection: SpinDirection = .lastUsed
 
-    func begin(completion: @escaping (SCWindow?, ActivationChoice) -> Void) {
+    func begin(completion: @escaping (SCWindow?, ActivationChoice, SpinDirection) -> Void) {
         self.completion = completion
         self.pendingChoice = .lastUsed
+        self.pendingDirection = .lastUsed
         Task {
             let content = try? await SCShareableContent.excludingDesktopWindows(
                 false, onScreenWindowsOnly: true
@@ -53,10 +55,14 @@ final class WindowPicker {
         view.onCancel = { [weak self] in self?.finish(nil) }
         container.addSubview(view)
 
-        let band = OptionsBandView(initialChoice: pendingChoice)
+        let band = OptionsBandView(initialChoice: pendingChoice, initialDirection: pendingDirection)
         band.onSelect = { [weak self] choice in
             self?.pendingChoice = choice
             ActivationChoice.lastUsed = choice
+        }
+        band.onDirectionChange = { [weak self] direction in
+            self?.pendingDirection = direction
+            SpinDirection.lastUsed = direction
         }
         band.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(band)
@@ -79,9 +85,10 @@ final class WindowPicker {
         let completion = self.completion
         self.completion = nil
         let choice = pendingChoice
+        let direction = pendingDirection
         // Defer so the shield-level picker window is fully torn down before any
         // follow-up UI (e.g. an alert) appears; otherwise it can sit behind it.
-        DispatchQueue.main.async { completion?(window, choice) }
+        DispatchQueue.main.async { completion?(window, choice, direction) }
     }
 }
 
@@ -96,11 +103,15 @@ private final class PickerWindow: NSWindow {
 /// option, remembering the last choice as the default.
 private final class OptionsBandView: NSView {
     var onSelect: ((ActivationChoice) -> Void)?
+    var onDirectionChange: ((SpinDirection) -> Void)?
     private var buttons: [NSButton] = []
     private var directionButton: NSButton?
-    private var direction = SpinDirection.lastUsed
+    private var direction: SpinDirection
+    private var selectedChoice: ActivationChoice
 
-    init(initialChoice: ActivationChoice) {
+    init(initialChoice: ActivationChoice, initialDirection: SpinDirection) {
+        self.direction = initialDirection
+        self.selectedChoice = initialChoice
         super.init(frame: .zero)
 
         let effect = NSVisualEffectView()
@@ -202,8 +213,8 @@ private final class OptionsBandView: NSView {
 
     @objc private func directionTapped() {
         direction.toggle()
-        SpinDirection.lastUsed = direction
         updateDirectionButton()
+        onDirectionChange?(direction)
     }
 
     private func updateDirectionButton() {
@@ -211,12 +222,16 @@ private final class OptionsBandView: NSView {
         directionButton?.image = NSImage(systemSymbolName: direction.symbolName, accessibilityDescription: direction.tooltip)?
             .withSymbolConfiguration(config)
         directionButton?.toolTip = direction.tooltip
+        // Only relevant while a spin speed is selected.
+        directionButton?.isEnabled = selectedChoice.initialSpinning
     }
 
     private func select(_ choice: ActivationChoice) {
+        selectedChoice = choice
         for (index, button) in buttons.enumerated() {
             button.state = (ActivationChoice.presets[index] == choice) ? .on : .off
         }
+        updateDirectionButton()
     }
 }
 
