@@ -16,6 +16,16 @@ final class WindowPicker {
     /// to order it out, leaving the screen permanently dimmed and unclickable.
     private var isPicking = false
 
+    /// Whether a pick is in progress: the shield is up, or the window list is
+    /// still being gathered before it goes up.
+    var isActive: Bool { isPicking }
+
+    /// Screen-coordinate regions that cancel the pick when clicked, used for the
+    /// menubar icon. The shield sits above the menu bar and eats its clicks, so
+    /// the status item never sees a second click of its own; the picker has to
+    /// recognise the hit itself and back out.
+    var cancelRegions: (() -> [NSRect])?
+
     func begin(completion: @escaping (SCWindow?, ActivationChoice, SpinDirection) -> Void) {
         guard !isPicking else { return }
         isPicking = true
@@ -35,7 +45,16 @@ final class WindowPicker {
         }
     }
 
+    /// Abandons an in-progress pick exactly as Escape would. Note this can land
+    /// while `begin` is still awaiting the window list, which is why `present`
+    /// re-checks that the pick is still live before putting up the shield.
+    func cancel() {
+        guard isPicking else { return }
+        finish(nil)
+    }
+
     private func present(candidates: [SCWindow]) {
+        guard isPicking else { return }
         guard !candidates.isEmpty else { finish(nil); return }
 
         let union = NSScreen.screens.reduce(NSRect.zero) { $0.union($1.frame) }
@@ -60,6 +79,9 @@ final class WindowPicker {
         view.unionOrigin = union.origin
         view.onPick = { [weak self] window in self?.finish(window) }
         view.onCancel = { [weak self] in self?.finish(nil) }
+        view.isCancelPoint = { [weak self] point in
+            (self?.cancelRegions?() ?? []).contains { $0.contains(point) }
+        }
         container.addSubview(view)
 
         let band = OptionsBandView(initialChoice: pendingChoice, initialDirection: pendingDirection)
@@ -342,6 +364,7 @@ private final class PickerView: NSView {
     var unionOrigin: CGPoint = .zero
     var onPick: ((SCWindow) -> Void)?
     var onCancel: (() -> Void)?
+    var isCancelPoint: ((NSPoint) -> Bool)?
 
     private var hovered: SCWindow?
 
@@ -366,6 +389,7 @@ private final class PickerView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if isCancelPoint?(NSEvent.mouseLocation) == true { onCancel?(); return }
         if let window = windowUnderCursor() { onPick?(window) }
     }
 

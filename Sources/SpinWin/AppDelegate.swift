@@ -11,6 +11,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let anglePresets: [Double] = [0, 90, 180, 270]
     private let spinPresets: [Double] = [6, 15, 30]
 
+    /// When the current pick started, so a stray double-click on the icon isn't
+    /// read as "open then cancel".
+    private var pickStartedAt: Date?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -23,6 +27,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         rebuildMenu()
+
+        // Clicking the icon again while the picker is up backs out of it. The
+        // picker's shield window covers the menu bar, so the status item itself
+        // never receives that click — the picker matches it by location instead.
+        picker.cancelRegions = { [weak self] in
+            guard let frame = self?.statusItem.button?.window?.frame else { return [] }
+            return [frame]
+        }
 
         // Refresh when a session stops on its own (e.g. system "Stop Sharing").
         manager.onStateChange = { [weak self] in self?.rebuildMenu() }
@@ -42,7 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Status item click
 
-    /// Left click jumps straight to picking a window; right click (or
+    /// Left click jumps straight to picking a window; clicking again while the
+    /// picker is up backs out of it, the same as Escape. Right click (or
     /// Control-click) pops up the menu of active rotations and Quit.
     @objc private func statusItemClicked() {
         let event = NSApp.currentEvent
@@ -50,9 +63,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || event?.modifierFlags.contains(.control) == true
         if isRightClick {
             popUpMenu()
+        } else if picker.isActive, isDeliberateSecondClick {
+            picker.cancel()
         } else {
             pickWindow()
         }
+    }
+
+    /// Whether enough time has passed since the pick began for this click to be
+    /// a separate, intentional one. The status button fires on every mouse-up,
+    /// so the second half of a double-click would otherwise close the picker the
+    /// instant it opened.
+    private var isDeliberateSecondClick: Bool {
+        guard let pickStartedAt else { return true }
+        return Date().timeIntervalSince(pickStartedAt) > NSEvent.doubleClickInterval
     }
 
     /// Shows the menu under the status item, then detaches it so the next
@@ -163,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func pickWindow() {
+        pickStartedAt = Date()
         picker.begin { [weak self] window, choice, direction in
             guard let self, let window else { return }
             self.manager.rotate(window: window, choice: choice, direction: direction)
