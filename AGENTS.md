@@ -19,9 +19,15 @@ There are no tests, linters, or CI. `swift build` is the only correctness gate.
 
 A "rotation" is not a real rotation. For each rotated window a `RotationSession`:
 
-1. **Hides** the real window by moving it to `(-30000, -30000)` via the
-   Accessibility API (`AccessibilityWindowMover`). It stays live off-screen so
-   it keeps rendering.
+1. **Hides** the real window by parking it just past the bottom-right corner of
+   the union of all displays via the Accessibility API
+   (`AccessibilityWindowMover.offScreenTarget`). It stays live off-screen so it
+   keeps rendering. Don't change that parking spot to a far-away coordinate like
+   `(-30000, -30000)`: macOS clamps window positions to keep part of a window
+   reachable, and that clamp is much tighter up/left, snapping the window back
+   and leaving a visible sliver beside its own overlay. Bottom-right clamps to a
+   single corner pixel. `repark()` re-applies it on display changes, since the
+   union shrinks when a screen is removed or resized.
 2. **Captures** its live contents with ScreenCaptureKit
    (`CaptureEngine`, `SCContentFilter(desktopIndependentWindow:)`) — this grabs
    only that window's buffer, which is *why* the overlay never mirrors itself.
