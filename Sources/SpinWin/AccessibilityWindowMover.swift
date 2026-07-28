@@ -94,10 +94,12 @@ final class AccessibilityWindowMover {
         return CGPoint(x: union.maxX - 1, y: union.maxY - 1)
     }
 
-    /// Restores the previously hidden window to its original position.
-    func restore() {
-        if let element = movedElement, let pos = originalPosition {
-            _ = setPosition(pos, on: element)
+    /// Restores the previously hidden window, moving it to `position` if
+    /// given (e.g. wherever the user dragged the overlay to), or back to its
+    /// original position otherwise.
+    func restore(to position: CGPoint? = nil) {
+        if let element = movedElement, let target = position ?? originalPosition {
+            _ = setPosition(target, on: element)
         }
         movedElement = nil
         originalPosition = nil

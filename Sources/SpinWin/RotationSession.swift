@@ -113,11 +113,32 @@ final class RotationSession {
     }
 
     func stop() {
-        capture.stop()
-        overlay?.orderOut(nil)
-        overlay = nil
-        mover.restore()
+        guard isRunning else { return }
         isRunning = false
+        capture.stop()
+
+        guard let overlay else {
+            mover.restore()
+            return
+        }
+        // Restore the source window wherever the overlay ended up (the user
+        // may have dragged it while rotating/rotated) rather than snapping
+        // back to where it was before rotation started. Computed now since
+        // the spring-back-to-upright animation below doesn't move the
+        // overlay's center, only its rotation.
+        let targetPosition = restoredPosition(from: overlay)
+
+        // Spring back to upright (stopping any spin) the same way rotation
+        // is first applied, then swap back to the real window once the
+        // overlay has visibly settled, instead of just vanishing.
+        CATransaction.begin()
+        CATransaction.setCompletionBlock {
+            overlay.orderOut(nil)
+            if self.overlay === overlay { self.overlay = nil }
+            self.mover.restore(to: targetPosition)
+        }
+        overlay.setFixed(degrees: 0)
+        CATransaction.commit()
     }
 
     /// Re-hides the source window after a display change, which can otherwise
@@ -171,5 +192,20 @@ final class RotationSession {
         } else {
             overlay.setFixed(degrees: degrees)
         }
+    }
+
+    /// Converts the overlay's current center (Cocoa, bottom-left origin) back
+    /// into the AX/CG position (top-left origin) the source window should be
+    /// restored to, so it reappears wherever the user left the dragged proxy
+    /// instead of snapping back to its pre-rotation spot.
+    private func restoredPosition(from overlay: OverlayWindow) -> CGPoint {
+        let cgFrame = window.frame
+        let primaryHeight = (NSScreen.screens.first { $0.frame.origin == .zero }
+            ?? NSScreen.main)?.frame.height ?? cgFrame.maxY
+        let center = overlay.currentCenter
+        return CGPoint(
+            x: center.x - cgFrame.width / 2,
+            y: primaryHeight - center.y - cgFrame.height / 2
+        )
     }
 }

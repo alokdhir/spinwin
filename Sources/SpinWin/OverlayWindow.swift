@@ -201,6 +201,10 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
 
     var currentOrigin: CGPoint { frame.origin }
 
+    /// Current logical center (Cocoa coords), tracking wherever the user has
+    /// dragged the overlay, independent of the box/handle geometry around it.
+    var currentCenter: CGPoint { center }
+
     fileprivate func backgroundWasClicked() {
         if let degrees = stopSpin() {
             onSpinStoppedByClick?(degrees)
