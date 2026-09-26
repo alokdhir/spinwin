@@ -121,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let about = NSMenuItem(title: "About SpinWin", action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
+        menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
