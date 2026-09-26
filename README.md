@@ -11,7 +11,7 @@ I was wasting time watching short-form videos (Reels, YouTube Shorts, that
 sort of thing) on my Mac when one asked the viewer to turn their "phone"
 upside down. You can't do that with a Mac. SpinWin is the result.
 
-## How it works (and why)
+## How it works
 
 macOS has **no public API to rotate another app's window**. Real rotation
 would require private SkyLight calls (`CGSSetWindowTransform`) with System
