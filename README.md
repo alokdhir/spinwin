@@ -92,3 +92,4 @@ to rotate freely. Press **Esc** on the overlay to stop and restore the window.
 | `ActivationChoice.swift` | Initial rotation choice (angle/spin/free) |
 | `SpinDirection.swift` | Clockwise/counterclockwise spin option |
 | `MenuBarIcon.swift` | Draws the menubar icon |
+| `AboutWindow.swift` | About window (icon, version, author, GitHub link) |

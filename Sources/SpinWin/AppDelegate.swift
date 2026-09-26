@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let menu = NSMenu()
     private let manager = RotationManager()
     private let picker = WindowPicker()
+    private lazy var aboutWindow = AboutWindow()
 
     private let anglePresets: [Double] = [0, 90, 180, 270]
     private let spinPresets: [Double] = [6, 15, 30]
@@ -117,6 +118,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
+        let about = NSMenuItem(title: "About SpinWin", action: #selector(showAbout), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
         let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "")
         quit.target = self
         menu.addItem(quit)
@@ -201,6 +205,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func stopAll() {
         manager.stopAll()
+    }
+
+    @objc private func showAbout() {
+        aboutWindow.show()
     }
 
     @objc private func quit() {
