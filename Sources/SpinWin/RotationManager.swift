@@ -73,6 +73,9 @@ final class RotationManager {
         }
         sessions.append(session)
         onStateChange?()
+        // Free starts upright and waits for the handle to be dragged, which
+        // otherwise reads as "nothing happened".
+        if choice == .free { session.beckonHandle() }
     }
 
     func stop(_ session: RotationSession) {

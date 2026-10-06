@@ -180,7 +180,14 @@ final class RotationSession {
             // Keep the current angle; just make sure it isn't spinning so the
             // drag handle is available.
             setFixed(degrees: degrees)
+            beckonHandle()
         }
+    }
+
+    /// Draws attention to the free-rotation handle (see
+    /// `OverlayWindow.beckonHandle`).
+    func beckonHandle() {
+        overlay?.beckonHandle()
     }
 
     // MARK: - Private

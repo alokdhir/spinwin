@@ -19,6 +19,14 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
     /// repeated rotations keep spinning the same direction instead of
     /// snapping back through 0, and transitions always take the shortest turn.
     private var currentRotationRadians: CGFloat = 0
+    /// Transient window drawing the rings that collapse onto the handle; kept
+    /// alive here until its animation finishes.
+    private var beacon: HandleBeaconWindow?
+    /// Which edge of the content the handle currently sits beyond, as an angle
+    /// in the content's own frame (0 = top). See `updateHandlePosition`.
+    fileprivate private(set) var handleSide: CGFloat = 0
+    /// Set by the handle while it's being dragged.
+    fileprivate var isDraggingHandle = false
 
     /// Called when Escape is pressed while this overlay is the key window.
     var onEscape: (() -> Void)?
@@ -205,6 +213,42 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
     /// dragged the overlay, independent of the box/handle geometry around it.
     var currentCenter: CGPoint { center }
 
+    /// Points the user at the rotation handle: a couple of rings sweep in
+    /// from well outside it and collapse onto it, then the handle pops.
+    /// Free rotation starts upright and does nothing until the handle is
+    /// dragged, so without this the small knob is easy to miss entirely and
+    /// the rotation looks like it silently failed.
+    func beckonHandle() {
+        // Give the overlay a beat to show its first captured frame so the
+        // rings land on something the eye is already looking at.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.isVisible, !self.spinning, !self.handle.isHidden else { return }
+
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                self.handle.blink()
+                return
+            }
+
+            let handleRect = self.convertToScreen(self.handle.frame)
+            let beacon = HandleBeaconWindow(center: CGPoint(x: handleRect.midX, y: handleRect.midY))
+            self.beacon?.orderOut(nil)
+            self.beacon = beacon
+            beacon.play { [weak self, weak beacon] in
+                beacon?.orderOut(nil)
+                if let self, self.beacon === beacon { self.beacon = nil }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + HandleBeaconWindow.landingDelay) { [weak self] in
+                self?.handle.pop()
+            }
+        }
+    }
+
+    override func orderOut(_ sender: Any?) {
+        beacon?.orderOut(nil)
+        beacon = nil
+        super.orderOut(sender)
+    }
+
     fileprivate func backgroundWasClicked() {
         if let degrees = stopSpin() {
             onSpinStoppedByClick?(degrees)
@@ -244,19 +288,49 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
         CATransaction.commit()
     }
 
-    /// Moves the drag handle to just outside the content's current "top"
-    /// (rotating with it), so it always affords grabbing to adjust further.
+    /// Moves the drag handle to just outside one edge of the content (rotating
+    /// with it), so it always affords grabbing to adjust further. The content's
+    /// top edge is preferred, but if that spot isn't reachable (e.g. a tall
+    /// window pushes it under the menu bar or off the screen) the handle moves
+    /// to the bottom, then the sides. The side is kept fixed while the handle
+    /// itself is being dragged so it doesn't jump out from under the cursor.
     private func updateHandlePosition() {
-        let margin: CGFloat = 22
-        let theta = currentRotationRadians
-        let radius = unrotatedSize.height / 2 + margin
-        let dx = -radius * sin(theta)
-        let dy = radius * cos(theta)
+        if !isDraggingHandle {
+            handleSide = Self.handleSides.first { handleScreenCenter(side: $0).map(isReachable) ?? false }
+                ?? Self.handleSides[0]
+        }
+        let offset = handleOffset(side: handleSide)
         let size = handle.frame.width
         handle.frame.origin = CGPoint(
-            x: frame.width / 2 + dx - size / 2,
-            y: frame.height / 2 + dy - size / 2
+            x: frame.width / 2 + offset.x - size / 2,
+            y: frame.height / 2 + offset.y - size / 2
         )
+    }
+
+    /// Candidate handle positions, as angles in the content's own frame:
+    /// top, bottom, left, right, in order of preference.
+    private static let handleSides: [CGFloat] = [0, .pi, .pi / 2, -.pi / 2]
+
+    /// Offset from the overlay's center to the handle's center when it sits
+    /// on `side`, accounting for the current rotation.
+    private func handleOffset(side: CGFloat) -> CGPoint {
+        let margin: CGFloat = 22
+        let halfExtent = abs(cos(side)) * unrotatedSize.height / 2 + abs(sin(side)) * unrotatedSize.width / 2
+        let radius = halfExtent + margin
+        let angle = currentRotationRadians + side
+        return CGPoint(x: -radius * sin(angle), y: radius * cos(angle))
+    }
+
+    private func handleScreenCenter(side: CGFloat) -> CGPoint? {
+        let offset = handleOffset(side: side)
+        return CGPoint(x: frame.midX + offset.x, y: frame.midY + offset.y)
+    }
+
+    /// Whether the whole handle would sit inside a screen's usable area: not
+    /// under the menu bar or Dock, and not off any edge.
+    private func isReachable(_ point: CGPoint) -> Bool {
+        let inset = handle.frame.width / 2 + 4
+        return NSScreen.screens.contains { $0.visibleFrame.insetBy(dx: inset, dy: inset).contains(point) }
     }
 
     // MARK: - NSWindowDelegate
@@ -265,6 +339,9 @@ final class OverlayWindow: NSWindow, NSWindowDelegate {
     /// later rotation changes stay anchored where they left it.
     func windowDidMove(_ notification: Notification) {
         center = CGPoint(x: frame.midX, y: frame.midY)
+        // Dragging the overlay around can bring the preferred side back into
+        // reach, or push the current one out of it.
+        if !handle.isHidden { updateHandlePosition() }
     }
 
     // MARK: - Key handling
@@ -382,7 +459,7 @@ private final class RotationHandleView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        // Just needs to be recognized so mouseDragged fires; no state to set.
+        owner?.isDraggingHandle = true
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -391,8 +468,9 @@ private final class RotationHandleView: NSView {
         let dx = point.x - owner.frame.width / 2
         let dy = point.y - owner.frame.height / 2
         // Angle from the window's "up" direction, matching the CCW rotation
-        // convention used for the content layer.
-        let theta = -atan2(dx, dy)
+        // convention used for the content layer, less the edge the handle
+        // sits on, so grabbing a bottom/side handle doesn't snap the content.
+        let theta = -atan2(dx, dy) - owner.handleSide
         let degrees = Double(theta * 180 / .pi)
         lastDegrees = degrees
         owner.setFixedImmediate(degrees: degrees)
@@ -400,6 +478,131 @@ private final class RotationHandleView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        owner?.isDraggingHandle = false
         owner?.onFreeRotateEnd?(lastDegrees)
+    }
+
+    /// A springy swell-and-settle, played as the beacon rings land on it.
+    func pop() {
+        guard let layer else { return }
+        let spring = CASpringAnimation(keyPath: "transform")
+        spring.fromValue = NSValue(caTransform3D: centeredScale(1.8))
+        spring.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        spring.mass = 1
+        spring.stiffness = 260
+        spring.damping = 9
+        spring.duration = spring.settlingDuration
+        layer.add(spring, forKey: "pop")
+    }
+
+    /// Reduced-motion stand-in for the beacon: fade in and out a few times
+    /// in place instead of anything sweeping across the screen.
+    func blink() {
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [1, 0.2, 1, 0.2, 1]
+        fade.duration = 1.2
+        layer?.add(fade, forKey: "blink")
+    }
+
+    /// A view's backing layer is anchored at its bottom-left and AppKit resets
+    /// anchorPoint on commit, so scale about the center by bracketing the scale
+    /// with translations instead.
+    private func centeredScale(_ scale: CGFloat) -> CATransform3D {
+        let mid = CGPoint(x: bounds.midX, y: bounds.midY)
+        var transform = CATransform3DMakeTranslation(mid.x, mid.y, 0)
+        transform = CATransform3DScale(transform, scale, scale, 1)
+        return CATransform3DTranslate(transform, -mid.x, -mid.y, 0)
+    }
+}
+
+/// A short-lived, click-through window that draws rings collapsing onto a
+/// point (the rotation handle). It's a separate window rather than layers in
+/// the overlay because the rings start far larger than the gap between the
+/// handle and the overlay's edge and would otherwise be clipped.
+private final class HandleBeaconWindow: NSWindow {
+    private static let startDiameter: CGFloat = 280
+    private static let endDiameter: CGFloat = 26
+    private static let collapseDuration: CFTimeInterval = 0.45
+    private static let ringDelays: [CFTimeInterval] = [0, 0.1]
+    /// When the first ring reaches the handle, so the handle can pop on impact.
+    static let landingDelay: TimeInterval = collapseDuration * 0.9
+
+    /// Screen point (Cocoa coords) the rings collapse onto.
+    private let target: CGPoint
+
+    init(center: CGPoint) {
+        target = center
+        let side = Self.startDiameter + 12
+        super.init(
+            contentRect: NSRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        isReleasedWhenClosed = false
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        ignoresMouseEvents = true
+        level = .floating
+        collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
+
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: side, height: side))
+        view.wantsLayer = true
+        contentView = view
+    }
+
+    // The handle often sits just above the top of the window, i.e. right under
+    // the menu bar, and AppKit would otherwise shove this window down to clear
+    // it, so the rings landed below the handle instead of on it.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+
+    func play(completion: @escaping () -> Void) {
+        guard let root = contentView?.layer else { completion(); return }
+        orderFrontRegardless()
+        // Aim at the handle relative to wherever the window really ended up,
+        // not the window's middle, in case the system moved it anyway.
+        let mid = CGPoint(x: target.x - frame.minX, y: target.y - frame.minY)
+        func circle(_ diameter: CGFloat) -> CGPath {
+            CGPath(ellipseIn: CGRect(x: mid.x - diameter / 2, y: mid.y - diameter / 2,
+                                     width: diameter, height: diameter), transform: nil)
+        }
+
+        let now = CACurrentMediaTime()
+        for (index, delay) in Self.ringDelays.enumerated() {
+            let ring = CAShapeLayer()
+            ring.frame = root.bounds
+            ring.path = circle(Self.endDiameter)
+            ring.fillColor = nil
+            ring.strokeColor = NSColor.controlAccentColor.cgColor
+            ring.lineWidth = index == 0 ? 3 : 2
+            // Model opacity 0 so each ring is gone once its animation ends.
+            ring.opacity = 0
+            root.addSublayer(ring)
+
+            // Animating the path (not a scale transform) keeps the stroke
+            // width constant while the ring shrinks.
+            let shrink = CABasicAnimation(keyPath: "path")
+            shrink.fromValue = circle(Self.startDiameter)
+            shrink.toValue = circle(Self.endDiameter)
+            // Accelerating inward: the "zoop" lands with a snap.
+            shrink.timingFunction = CAMediaTimingFunction(name: .easeIn)
+
+            let fade = CAKeyframeAnimation(keyPath: "opacity")
+            fade.values = [0, 0.9, 1, 0]
+            fade.keyTimes = [0, 0.35, 0.9, 1]
+
+            let group = CAAnimationGroup()
+            group.animations = [shrink, fade]
+            group.duration = Self.collapseDuration
+            group.beginTime = now + delay
+            group.fillMode = .backwards
+            ring.add(group, forKey: "collapse")
+        }
+
+        let total = Self.collapseDuration + (Self.ringDelays.max() ?? 0) + 0.05
+        DispatchQueue.main.asyncAfter(deadline: .now() + total, execute: completion)
     }
 }
