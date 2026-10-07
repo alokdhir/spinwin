@@ -105,6 +105,8 @@ window). `AccessibilityWindowMover.ensureTrusted()` prompts for the latter.
 
 ## Conventions
 
+- Commit messages and PRs must not include AI attribution lines (no
+  "Generated with ...", "Assisted-by:", or "Co-Authored-By:" trailers).
 - All UI/session types are `@MainActor`; `CaptureEngine` runs its `SCStream`
   callbacks on a private queue and hops to main before touching UI.
 - Failures surface as human-readable strings (`RotationSession.start` returns
